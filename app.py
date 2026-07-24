@@ -100,7 +100,14 @@ def get_retriever(bot_id):
     if bot_id in _retrievers_cache:
         return _retrievers_cache[bot_id]
         
-    vector_store_path = os.path.join("vector_stores", bot_id)
+    # Check /tmp first if running on Vercel
+    base_dir = "/tmp" if os.environ.get("VERCEL") == "1" else "."
+    vector_store_path = os.path.join(base_dir, "vector_stores", bot_id)
+    
+    if not os.path.exists(vector_store_path):
+        # Fall back to packaged read-only directory
+        vector_store_path = os.path.join("vector_stores", bot_id)
+        
     if os.path.exists(vector_store_path):
         print(f"[INFO] Loading vector store for {bot_id}...")
         vectorstore = FAISS.load_local(vector_store_path, embeddings, allow_dangerous_deserialization=True)
@@ -1075,7 +1082,8 @@ def config_upload():
             
             if texts:
                 vectorstore = FAISS.from_texts(texts, embeddings)
-                vector_store_path = os.path.join("vector_stores", bot_id)
+                base_dir = "/tmp" if os.environ.get("VERCEL") == "1" else "."
+                vector_store_path = os.path.join(base_dir, "vector_stores", bot_id)
                 os.makedirs(vector_store_path, exist_ok=True)
                 vectorstore.save_local(vector_store_path)
                 
