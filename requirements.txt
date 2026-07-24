@@ -9,3 +9,5 @@ flask
 flask-cors
 langchain-openai
 python-dotenv
+pymongo
+gunicorn

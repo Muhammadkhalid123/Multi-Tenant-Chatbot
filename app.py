@@ -19,82 +19,97 @@ import threading
 from datetime import datetime
 from dotenv import load_dotenv
 from collections import defaultdict
+from pymongo import MongoClient
+from bson.objectid import ObjectId
 
 load_dotenv()
+
+# MongoDB Database Connection
+MONGO_URI = os.getenv("MONGO_URI", "mongodb://localhost:27017/chatbot")
+mongo_client = MongoClient(MONGO_URI)
+db = mongo_client.get_default_database()
 
 app = Flask(__name__)
 CORS(app)
 app.secret_key = os.getenv("ADMIN_PASSWORD", "default-secret-key-123456")
 
 # -------------------------
-# SQLite Database Initialization
+# MongoDB Database Initialization
 # -------------------------
-DB_PATH = "/tmp/leads.db" if os.environ.get("VERCEL") == "1" else "leads.db"
-
 def init_db():
-    conn = sqlite3.connect(DB_PATH)
-    cursor = conn.cursor()
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS chats (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            started_at TEXT,
-            name TEXT,
-            email TEXT,
-            phone TEXT,
-            interested_services TEXT,
-            transcript TEXT,
-            summary TEXT
-        )
-    """)
-    conn.commit()
-    conn.close()
+    try:
+        # Create indexes
+        db.bot_configs.create_index("bot_id", unique=True)
+        db.chats.create_index([("bot_id", 1), ("started_at", -1)])
+        print("[INFO] MongoDB connected and indexes verified successfully.")
+    except Exception as e:
+        print(f"[ERROR] Failed to initialize MongoDB database: {e}")
 
 init_db()
 
 # -------------------------
-# Load modular documents and create vectorstore
+# Multi-tenant Config & Vector Store Loader
 # -------------------------
 embeddings = FastEmbedEmbeddings(model_name="sentence-transformers/all-MiniLM-L6-v2")
 
-VECTOR_STORE_PATH = "vector_store/self_publishing_consultant_faiss_index"
-SOURCE_DOCS_DIR = "data/source_documents"
+# Cache in-memory loaded retrievers and brand configurations
+_retrievers_cache = {}
+_config_cache = {}
 
-def initialize_vector_store():
-    if os.path.exists(VECTOR_STORE_PATH):
-        print("[INFO] Loading existing vector store...")
-        return FAISS.load_local(VECTOR_STORE_PATH, embeddings, allow_dangerous_deserialization=True)
+def load_bot_config(bot_id):
+    """Load configuration for a specific chatbot brand"""
+    if bot_id in _config_cache:
+        return _config_cache[bot_id]
+        
+    # 1. Try to load from database first
+    try:
+        row = db.bot_configs.find_one({"bot_id": bot_id})
+        if row:
+            # Remove MongoDB internal ObjectId
+            row.pop("_id", None)
+            _config_cache[bot_id] = row
+            return row
+    except Exception as e:
+        print(f"[ERROR] Failed to load config from database for {bot_id}: {e}")
+        
+    # 2. Fall back to configuration file config/<bot_id>.json
+    config_path = os.path.join("config", f"{bot_id}.json")
+    if os.path.exists(config_path):
+        try:
+            with open(config_path, "r", encoding="utf-8") as f:
+                config = json.load(f)
+                _config_cache[bot_id] = config
+                return config
+        except Exception as e:
+            print(f"[ERROR] Failed to load config file for {bot_id}: {e}")
+            
+    # 3. Fall back to default config values
+    default_config = {
+        "bot_id": bot_id,
+        "brand_name": bot_id.replace("_", " ").title(),
+        "welcome_message": f"Hello! Welcome to {bot_id.replace('_', ' ').title()} Chat Assistant. How can I help you today?",
+        "primary_color": "#d97706",
+        "primary_light_color": "#fbbf24",
+        "webhook_url": None,
+        "system_prompt": "You are a helpful assistant. Answer the user's questions clearly and concisely.\n\nContext: {context}\n\nPrevious conversation: {history}\n\nQuestion: {question}\n\nJSON Response:"
+    }
+    return default_config
+
+def get_retriever(bot_id):
+    """Retrieve the FAISS vector store retriever for a specific bot_id"""
+    if bot_id in _retrievers_cache:
+        return _retrievers_cache[bot_id]
+        
+    vector_store_path = os.path.join("vector_stores", bot_id)
+    if os.path.exists(vector_store_path):
+        print(f"[INFO] Loading vector store for {bot_id}...")
+        vectorstore = FAISS.load_local(vector_store_path, embeddings, allow_dangerous_deserialization=True)
+        retriever = vectorstore.as_retriever(search_kwargs={"k": 3})
+        _retrievers_cache[bot_id] = retriever
+        return retriever
     else:
-        print("[INFO] Creating new vector store from modular markdown documents...")
-        all_docs = []
-        text_splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=200)
-        
-        if os.path.exists(SOURCE_DOCS_DIR):
-            md_files = glob.glob(os.path.join(SOURCE_DOCS_DIR, "*.md"))
-            for file_path in md_files:
-                try:
-                    loader = TextLoader(file_path, encoding="utf-8")
-                    documents = loader.load()
-                    docs = text_splitter.split_documents(documents)
-                    all_docs.extend(docs)
-                    print(f"[OK] Loaded {len(docs)} chunks from {os.path.basename(file_path)}")
-                except Exception as e:
-                    print(f"[ERROR] Failed to load {file_path}: {e}")
-        else:
-            print(f"[WARN] Source documents directory not found: {SOURCE_DOCS_DIR}")
-        
-        if all_docs:
-            vectorstore = FAISS.from_documents(all_docs, embeddings)
-            os.makedirs(os.path.dirname(VECTOR_STORE_PATH), exist_ok=True)
-            vectorstore.save_local(VECTOR_STORE_PATH)
-            print(f"[OK] Vector store saved with {len(all_docs)} total chunks")
-            return vectorstore
-        else:
-            raise Exception("No documents found to create vector store")
-
-vectorstore = initialize_vector_store()
-
-# SIMPLE - Just one retriever like your original
-retriever = vectorstore.as_retriever(search_kwargs={"k": 3})
+        print(f"[WARN] No vector store found at {vector_store_path}. Returning None.")
+        return None
 
 # -------------------------
 # LLM setup - Support Ollama and Groq (OpenAI-compatible)
@@ -119,75 +134,7 @@ else:
 
 
 
-conversation_prompt = PromptTemplate(
-    input_variables=["context", "history", "question"],
-    template="""You are a helpful assistant for Self Publishing Consultant.
-
-You must respond ONLY in a valid JSON format with the following structure:
-{{
-  "reply": "Your clear, concise, and helpful response text here",
-  "lead_required": true/false
-}}
-
-Do not include any explanation, markdown wrappers (like ```json), or text outside of the JSON block.
-
-Rules for answering:
-1. If the user says "you" or "you guys" it means Self Publishing Consultant.
-2. Always answer clearly, concisely, and with a human tone. Never use asterisks (*), use dashes (-) or numbers instead.
-3. If the question is about pricing or packages:
-   - Explain that our services are modular and custom-tailored (a la carte), so authors only pay for what they need instead of rigid bundles.
-   - Outline the primary service pathways:
-     1. Editorial & Prep (Manuscript Assessment, Developmental Editing)
-     2. Design & Production (Cover Design, universal Interior Formatting)
-     3. Launch & Distribution (Global Distribution Setup, Book Launch Marketing)
-   - Explain that pricing is based on the specific manuscript scope (word count, design complexity).
-   - After explaining, ask: "Would you like to schedule a free consultation to get a tailored quote for your book?"
-4. If the question is about services:
-   - First analyze what specific type of service the user is asking about from their question.
-   - If they mention a specific service category (like "editing", "marketing", "design"), filter and show only relevant services from the context.
-   - If they ask generally about "services", show all available services.
-   - Extract only the short service names (one per line, no descriptions).
-   - Ensure each service name starts with a dash and a space.
-   - After listing, ask: "Which of these services are you most interested in for your project?"
-5. If the user directly mentions or selects a service (e.g., "I want to publish my book", "I need cover design", "I want ghost writing"):
-   - Do not list all services.
-   - Treat this as a confirmed interest in that service.
-   - First, acknowledge their interest warmly (e.g., "That's great! We'd be happy to help you with [service].")
-   - Ask one or two gentle, service-specific questions to better understand their requirements.
-       Example: For "publish my book", ask: "Do you already have your manuscript ready, or are you still working on it?"
-   - Once they respond, naturally introduce the modular options and explain that we can provide a custom quote for it.
-6. If the user asks "what is [service]" or "what does [service] include" or similar informational questions:
-   - Provide a clear, concise explanation of what that specific service includes based on the context.
-   - Mention the key benefits and what's typically involved.
-   - After explaining, ask: "Does this sound like something that would help with your project?"
-   - Do not immediately jump to qualification questions.
-7. If the user selects or mentions a specific service from a previous list:
-   - Do not immediately push for a sale or listing.
-   - First, acknowledge their interest warmly.
-   - Ask one or two gentle, service-specific questions to better understand their requirements.
-       Example: For "formatting", ask: "What type of document do you need formatted - manuscript, ebook, or print book?"
-   - Once they respond, naturally introduce the custom-quoted modular options that fit their needs and offer a free consultation.
-8. If the user expresses interest in scheduling a consultation, getting a quote, or moving forward:
-   - Set "lead_required" to true in your JSON output so the frontend can display the lead capture form automatically.
-   - Do not ask for contact details in text format.
-9. When a user responds to clarifying questions about their service needs:
-   - Analyze their response and match it to the most relevant service pathways from the context.
-   - Explain briefly how these services align with their goals.
-   - After explaining, ask: "Would you like to schedule a free consultation to get a custom proposal for these services?"
-10. If the user greets you (hi, hello), reply politely without contact details unless they ask.
-11. Provide contact details only if directly asked for them.
-12. Never add "according to the context" or similar filler.
-13. Always guide the conversation forward — never repeat the same question if it has already been answered.
-14. If the user is exploring and not ready to commit, give concise helpful information and ask the most relevant next question.
-
-Context: {context}
-
-Previous conversation: {history}
-
-Question: {question}
-
-JSON Response:"""
-)
+# Dynamic PromptTemplates are now loaded from bot config JSON files.
 
 
 # Store conversation history and user names
@@ -277,8 +224,7 @@ def extract_interests_from_message(question):
 # -------------------------
 # Webhook Helper
 # -------------------------
-def send_to_webhook(name, email, phone):
-    webhook_url = os.getenv("WEBHOOK_URL")
+def send_to_webhook(name, email, phone, webhook_url):
     if not webhook_url:
         return
         
@@ -306,7 +252,7 @@ def index():
 def parse_llm_json_response(llm_output):
     """
     Parses the JSON response from the LLM.
-    Returns (reply_text, lead_required_boolean).
+    Returns (reply_text, lead_required_boolean, extracted_name_string_or_none).
     """
     clean_output = llm_output.strip()
     
@@ -322,21 +268,33 @@ def parse_llm_json_response(llm_output):
         data = json.loads(clean_output)
         reply = data.get("reply", "").strip()
         lead_required = bool(data.get("lead_required", False))
+        extracted_name = data.get("extracted_name")
+        if isinstance(extracted_name, str):
+            extracted_name = extracted_name.strip()
+            if extracted_name.lower() in ("null", "none", ""):
+                extracted_name = None
+        else:
+            extracted_name = None
         if reply:
-            return reply, lead_required
+            return reply, lead_required, extracted_name
     except Exception as e:
         print(f"[WARN] Failed to parse LLM response as JSON: {e}. Output was: {llm_output}")
         
-    return llm_output, False
+    return llm_output, False, None
 
 @app.route("/ask", methods=["POST"])
 def ask():
     data = request.get_json()
     question = data.get("question", "").strip()
     session_id = data.get("session_id", "default")
+    bot_id = data.get("bot_id", "self_publishing").strip()
     
     if not question:
         return jsonify({"error": "No message provided"}), 400
+
+    # Load brand config and retriever
+    config = load_bot_config(bot_id)
+    retriever = get_retriever(bot_id)
 
     # Track service interests from this message
     new_interests = extract_interests_from_message(question)
@@ -349,33 +307,26 @@ def ask():
     history_text = "\n".join([f"User: {msg['user']}\nBot: {msg['bot']}" 
                               for msg in session_history[-3:]])
     
-    # Get context - SIMPLE, not multiple searches
-    try:
-        docs = retriever.invoke(question)
-        context = "\n\n".join([doc.page_content for doc in docs])
-        context = context[:4000]  # Limit context size
-    except Exception as e:
-        context = ""
+    # Get context from the bot's specific retriever
+    context = ""
+    if retriever:
+        try:
+            docs = retriever.invoke(question)
+            context = "\n\n".join([doc.page_content for doc in docs])
+            context = context[:4000]  # Limit context size
+        except Exception as e:
+            print(f"[ERROR] Retrieval failed for {bot_id}: {e}")
     
-    # Check if this is the second message and we're waiting to capture user's name
-    is_awaiting_name = session_id in user_names and user_names[session_id] == "__awaiting__"
-    if is_awaiting_name:
-        words = question.strip().split()
-        if 1 <= len(words) <= 4 and "?" not in question and "!" not in question:
-            captured_name = words[0].capitalize()
-            user_names[session_id] = captured_name
-            answer_text = f"Nice to meet you, {captured_name}! How can I help you with your publishing journey today?"
-            session_history.append({"user": question, "bot": answer_text})
-            return jsonify({"lead_required": False, "answer": answer_text, "session_id": session_id})
-        else:
-            user_names[session_id] = ""
-
     # Inject the user's known name into the history context
     known_name = user_names.get(session_id, "")
     name_context = f"The user's name is {known_name}. Use their name naturally in your replies.\n" if known_name and known_name != "__awaiting__" else ""
 
-    # Build simple prompt
-    prompt = conversation_prompt.format(
+    # Build prompt dynamically using config prompt template
+    prompt_template = PromptTemplate(
+        input_variables=["context", "history", "question"],
+        template=config.get("system_prompt")
+    )
+    prompt = prompt_template.format(
         context=name_context + context,
         history=history_text,
         question=question
@@ -390,13 +341,19 @@ def ask():
         raw_answer = raw_answer.strip()
         
         # Parse JSON response
-        answer_text, lead_required = parse_llm_json_response(raw_answer)
+        answer_text, lead_required, extracted_name = parse_llm_json_response(raw_answer)
+        
+        is_awaiting_name = session_id in user_names and user_names[session_id] == "__awaiting__"
+        if extracted_name:
+            user_names[session_id] = extracted_name
+        elif is_awaiting_name:
+            user_names[session_id] = ""
         
     except Exception as e:
         print(f"[ERROR] LLM Invocation failed: {e}")
         import traceback
         traceback.print_exc()
-        answer_text = "I'm here to help with your publishing needs. What would you like to know?"
+        answer_text = f"I'm here to help with your {config.get('brand_name')} questions. How can I help you?"
         lead_required = False
     
     # After very first exchange: ask for user's name
@@ -411,10 +368,13 @@ def ask():
         "bot": answer_text
     })
 
-    
     # Keep history small
     if len(session_history) > 10:
         session_history.pop(0)
+    
+    # Introduce 3 seconds delay in replying
+    import time
+    time.sleep(3)
     
     return jsonify({
         "lead_required": lead_required,
@@ -435,7 +395,11 @@ def lead():
     email = data.get("email", "").strip()
     phone = data.get("phone", "").strip()
     session_id = data.get("session_id", "default")
+    bot_id = data.get("bot_id", "self_publishing").strip()
     interested_services = data.get("interested_services", [])
+
+    # Load brand config
+    config = load_bot_config(bot_id)
 
     # Merge server-side tracked interests
     server_interests = list(session_interests.get(session_id, set()))
@@ -460,18 +424,19 @@ def lead():
         extracted_summary = "General Inquiry"
 
         if transcript_text:
-            extraction_prompt = f"""You are a helpful assistant for Self Publishing Consultant.
-Analyze the following conversation between an author and our consultant chatbot:
+            brand_name = config.get("brand_name", "our company")
+            extraction_prompt = f"""You are a helpful assistant for {brand_name}.
+Analyze the following conversation between a customer and our chatbot:
 
 {transcript_text}
 
 Identify:
-1. A concise 1-2 sentence summary of the author's book project, manuscript status, or goals.
+1. A concise 1-2 sentence summary of the customer's project, needs, or goals.
 2. The specific services they showed interest in.
 
 You must respond ONLY in a valid JSON format with the following keys:
 {{
-  "summary": "1-2 sentence summary of their project/manuscript",
+  "summary": "1-2 sentence summary of their project/needs",
   "interested_services": "Comma-separated list of services discussed"
 }}
 
@@ -493,23 +458,21 @@ Do not include any explanation, markdown wrappers (like ```json), or text outsid
             except Exception as e:
                 print(f"[WARN] Failed to extract details via LLM: {e}. Falling back to default values.")
 
-        # Save lead to SQLite
-        conn = sqlite3.connect(DB_PATH)
-        cursor = conn.cursor()
-        cursor.execute("""
-            INSERT INTO chats (started_at, name, email, phone, interested_services, transcript, summary)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
-        """, (
-            datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-            name,
-            email,
-            phone,
-            extracted_services if extracted_services else "General Inquiry",
-            transcript_text,
-            extracted_summary
-        ))
-        conn.commit()
-        conn.close()
+        # Save lead to MongoDB
+        try:
+            lead_document = {
+                "started_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                "name": name,
+                "email": email,
+                "phone": phone,
+                "interested_services": extracted_services if extracted_services else "General Inquiry",
+                "transcript": transcript_text,
+                "summary": extracted_summary,
+                "bot_id": bot_id
+            }
+            db.chats.insert_one(lead_document)
+        except Exception as e:
+            print(f"[ERROR] Failed to save lead to MongoDB: {e}")
 
         # Save lead to JSON file (backup)
         lead_data = {
@@ -520,12 +483,14 @@ Do not include any explanation, markdown wrappers (like ```json), or text outsid
             "timestamp": datetime.now().isoformat(),
             "session_id": session_id,
             "summary": extracted_summary,
-            "transcript": transcript_text
+            "transcript": transcript_text,
+            "bot_id": bot_id
         }
         save_lead_to_json(lead_data)
         
-        # Fire-and-forget to Webhook
-        threading.Thread(target=send_to_webhook, args=(name, email, phone)).start()
+        # Fire-and-forget to Webhook (brand-specific or global fallback)
+        webhook_url = config.get("webhook_url") or os.getenv("WEBHOOK_URL")
+        threading.Thread(target=send_to_webhook, args=(name, email, phone, webhook_url)).start()
 
         # Clear session
         if session_id in session_interests:
@@ -804,15 +769,27 @@ ADMIN_CHATS_HTML = """<!DOCTYPE html>
 <body>
     <div class="container">
         <header>
-            <h1>Lead Dashboard — Self Publishing Consultant</h1>
+            <h1>Lead Dashboard — Multi-Tenant</h1>
             <a href="/admin/logout" class="logout-btn">Log Out</a>
         </header>
+        <div style="padding: 20px 30px 0 30px; display: flex; align-items: center; gap: 10px;">
+            <form method="GET" action="/admin/chats" style="display: flex; align-items: center; gap: 10px;">
+                <label for="bot_id_select" style="display: inline; text-transform: none; font-size: 13.5px; font-weight: normal; color: var(--text-main);">Filter by Chatbot:</label>
+                <select id="bot_id_select" name="bot_id" onchange="this.form.submit()" style="padding: 6px 12px; background: rgba(15, 23, 42, 0.8); border: 1px solid var(--border); border-radius: 6px; color: var(--text-main); font-size: 13px; outline: none; cursor: pointer;">
+                    <option value="">-- All Chatbots --</option>
+                    {% for b in all_bots %}
+                        <option value="{{ b }}" {% if b == selected_bot_id %}selected{% endif %}>{{ b }}</option>
+                    {% endfor %}
+                </select>
+            </form>
+        </div>
         <div class="table-container">
             {% if chats %}
             <table>
                 <thead>
                     <tr>
                         <th>Date & Time</th>
+                        <th>Chatbot ID</th>
                         <th>Author Name</th>
                         <th>Contact Details</th>
                         <th>Requested Services</th>
@@ -824,6 +801,7 @@ ADMIN_CHATS_HTML = """<!DOCTYPE html>
                     {% for chat in chats %}
                     <tr class="chat-row" onclick="window.location.href='/admin/chats/{{ chat.id }}'">
                         <td class="date">{{ chat.started_at }}</td>
+                        <td style="color: var(--primary-light); font-weight: 600;">{{ chat.bot_id if chat.bot_id else 'General' }}</td>
                         <td class="name">{{ chat.name }}</td>
                         <td class="contact">
                             <div>📧 {{ chat.email }}</div>
@@ -979,6 +957,10 @@ ADMIN_DETAIL_HTML = """<!DOCTYPE html>
                     <div class="field-value">{{ chat.started_at }}</div>
                 </div>
                 <div class="field">
+                    <div class="field-label">Chatbot Brand ID</div>
+                    <div class="field-value" style="color: var(--primary-light); font-weight:600;">{{ chat.bot_id if chat.bot_id else 'General' }}</div>
+                </div>
+                <div class="field">
                     <div class="field-label">Author Name</div>
                     <div class="field-value" style="font-size: 16px; font-weight:600; color: var(--primary-light);">{{ chat.name }}</div>
                 </div>
@@ -1038,6 +1020,100 @@ ADMIN_DETAIL_HTML = """<!DOCTYPE html>
 
 
 # -------------------------
+# Dynamic Configuration Upload Endpoint
+# -------------------------
+@app.route("/config/upload", methods=["POST"])
+def config_upload():
+    """
+    Allows a brand's admin panel to upload its configuration and raw knowledge base markdown.
+    Compiles the knowledge base into a FAISS index on-the-fly.
+    """
+    data = request.get_json()
+    if not data:
+        return jsonify({"error": "No data provided"}), 400
+        
+    bot_id = data.get("bot_id", "").strip()
+    brand_name = data.get("brand_name", "").strip()
+    system_prompt = data.get("system_prompt", "").strip()
+    
+    if not bot_id or not brand_name or not system_prompt:
+        return jsonify({"error": "bot_id, brand_name, and system_prompt are required fields"}), 400
+        
+    welcome_message = data.get("welcome_message", f"Hello! Welcome to {brand_name}.").strip()
+    primary_color = data.get("primary_color", "#d97706").strip()
+    primary_light_color = data.get("primary_light_color", "#fbbf24").strip()
+    webhook_url = data.get("webhook_url", "").strip()
+    admin_password = data.get("admin_password", "").strip()
+    knowledge_base = data.get("knowledge_base", "").strip()
+    
+    try:
+        # Save or update in MongoDB
+        db.bot_configs.update_one(
+            {"bot_id": bot_id},
+            {"$set": {
+                "bot_id": bot_id,
+                "brand_name": brand_name,
+                "welcome_message": welcome_message,
+                "primary_color": primary_color,
+                "primary_light_color": primary_light_color,
+                "webhook_url": webhook_url if webhook_url else None,
+                "system_prompt": system_prompt,
+                "admin_password": admin_password if admin_password else None
+            }},
+            upsert=True
+        )
+        
+        # Clear config cache for this bot
+        if bot_id in _config_cache:
+            del _config_cache[bot_id]
+            
+        # Compile vector store if knowledge base is provided
+        if knowledge_base:
+            print(f"[INFO] Compiling vector store for {bot_id} via API upload...")
+            text_splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=200)
+            texts = text_splitter.split_text(knowledge_base)
+            
+            if texts:
+                vectorstore = FAISS.from_texts(texts, embeddings)
+                vector_store_path = os.path.join("vector_stores", bot_id)
+                os.makedirs(vector_store_path, exist_ok=True)
+                vectorstore.save_local(vector_store_path)
+                
+                # Invalidate retrievers cache to force reload on next chat
+                if bot_id in _retrievers_cache:
+                    del _retrievers_cache[bot_id]
+                print(f"[OK] Vector store compiled successfully via API for '{bot_id}'")
+            else:
+                return jsonify({"error": "Failed to extract chunks from the knowledge base"}), 400
+                
+        return jsonify({"success": True, "message": f"Configuration for '{bot_id}' saved and initialized successfully."})
+        
+    except Exception as e:
+        print(f"[ERROR] Failed to save dynamic config: {e}")
+        return jsonify({"error": str(e)}), 500
+
+# -------------------------
+# Frontend Branding Config Endpoint
+# -------------------------
+@app.route("/config/<bot_id>", methods=["GET"])
+def get_bot_config(bot_id):
+    """
+    Returns public configuration fields (name, colors, welcome message) 
+    for the frontend widget to adjust itself dynamically.
+    """
+    bot_id = bot_id.strip()
+    try:
+        config = load_bot_config(bot_id)
+        return jsonify({
+            "brand_name": config.get("brand_name", bot_id.replace("_", " ").title()),
+            "welcome_message": config.get("welcome_message", "Hello! How can I help you today?"),
+            "primary_color": config.get("primary_color", "#d97706"),
+            "primary_light_color": config.get("primary_light_color", "#fbbf24")
+        })
+    except Exception as e:
+        return jsonify({"error": str(e)}), 404
+
+# -------------------------
 # Admin Portal Routes
 # -------------------------
 @app.route("/admin", methods=["GET", "POST"])
@@ -1056,35 +1132,54 @@ def admin_login():
 def admin_chats():
     if not session.get("admin_logged_in"):
         return redirect(url_for("admin_login"))
+        
+    selected_bot_id = request.args.get("bot_id", "").strip()
     try:
-        conn = sqlite3.connect(DB_PATH)
-        conn.row_factory = sqlite3.Row
-        cursor = conn.cursor()
-        cursor.execute("SELECT * FROM chats ORDER BY started_at DESC")
-        chats = cursor.fetchall()
-        conn.close()
+        # Get all distinct bot_ids from database for filtering
+        db_bots = db.chats.distinct("bot_id")
+        db_bots = [b for b in db_bots if b]
+        
+        # Get bot ids from bot_configs table
+        db_config_bots = db.bot_configs.distinct("bot_id")
+        
+        # Also scan the config directory for available bot configs
+        config_bots = []
+        if os.path.exists("config"):
+            config_bots = [f[:-5] for f in os.listdir("config") if f.endswith(".json")]
+            
+        all_bots = sorted(list(set(db_bots + db_config_bots + config_bots)))
+        
+        # Query chats from MongoDB
+        query = {"bot_id": selected_bot_id} if selected_bot_id else {}
+        chats_cursor = db.chats.find(query).sort("started_at", -1)
+        
+        chats = []
+        for chat in chats_cursor:
+            # Map MongoDB ObjectId to 'id' string so HTML template works seamlessly
+            chat["id"] = str(chat["_id"])
+            chats.append(chat)
+            
     except Exception as e:
         print(f"[ERROR] Failed to query leads: {e}")
         chats = []
-    return render_template_string(ADMIN_CHATS_HTML, chats=chats)
+        all_bots = []
+        
+    return render_template_string(ADMIN_CHATS_HTML, chats=chats, all_bots=all_bots, selected_bot_id=selected_bot_id)
 
-@app.route("/admin/chats/<int:chat_id>", methods=["GET"])
+@app.route("/admin/chats/<chat_id>", methods=["GET"])
 def admin_chat_detail(chat_id):
     if not session.get("admin_logged_in"):
         return redirect(url_for("admin_login"))
     try:
-        conn = sqlite3.connect(DB_PATH)
-        conn.row_factory = sqlite3.Row
-        cursor = conn.cursor()
-        cursor.execute("SELECT * FROM chats WHERE id = ?", (chat_id,))
-        chat = cursor.fetchone()
-        conn.close()
+        chat = db.chats.find_one({"_id": ObjectId(chat_id)})
         
         if not chat:
             return "Chat not found", 404
             
+        chat["id"] = str(chat["_id"])
+        
         transcript_list = []
-        raw_transcript = chat["transcript"]
+        raw_transcript = chat.get("transcript", "")
         if raw_transcript:
             lines = raw_transcript.split('\n')
             for line in lines:
@@ -1112,6 +1207,13 @@ def widget():
     Serves the minimal chat-only interface for embedding in standard iFrames.
     """
     return send_from_directory('frontend', 'widget.html')
+
+@app.route("/frontend/<path:filename>", methods=["GET"])
+def serve_frontend(filename):
+    """
+    Serves static frontend assets (like widget.js).
+    """
+    return send_from_directory('frontend', filename)
 
 # -------------------------
 # Debug endpoints
