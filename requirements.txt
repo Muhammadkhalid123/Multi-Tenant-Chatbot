@@ -1,8 +1,5 @@
 langchain
 langchain-community
-fastembed
-faiss-cpu
-pypdf
 ollama
 langchain-ollama
 flask

@@ -2,10 +2,7 @@ import sys
 sys.stdout.reconfigure(encoding='utf-8')
 from flask import Flask, request, jsonify, send_from_directory, session, redirect, url_for, render_template_string
 from flask_cors import CORS
-from langchain_community.vectorstores import FAISS
-from langchain_community.embeddings.fastembed import FastEmbedEmbeddings
 from langchain_text_splitters import RecursiveCharacterTextSplitter
-from langchain_community.document_loaders import TextLoader
 from langchain_ollama import OllamaLLM
 from langchain_openai import ChatOpenAI
 from langchain_core.prompts import PromptTemplate
@@ -48,14 +45,115 @@ def init_db():
 init_db()
 
 # -------------------------
-# Multi-tenant Config & Vector Store Loader
+# Multi-tenant Config & Vector Store Loader (Lightweight Custom JSON Vector Store)
 # -------------------------
-# Use /tmp for caching on Vercel since the default user home directory is read-only
-cache_dir = "/tmp/fastembed_cache" if os.environ.get("VERCEL") == "1" else None
-embeddings = FastEmbedEmbeddings(
-    model_name="sentence-transformers/all-MiniLM-L6-v2",
-    cache_dir=cache_dir
-)
+class HuggingFaceAPIEmbeddings:
+    def __init__(self, model_name="sentence-transformers/all-MiniLM-L6-v2", api_key=None):
+        self.model_name = model_name
+        self.api_url = f"https://api-inference.huggingface.co/pipeline/feature-extraction/{model_name}"
+        token = api_key or os.getenv("HF_TOKEN") or os.getenv("HF_API_KEY")
+        self.headers = {"Authorization": f"Bearer {token}"} if token else {}
+
+    def embed_documents(self, texts):
+        if not texts:
+            return []
+        try:
+            response = requests.post(self.api_url, headers=self.headers, json={"inputs": texts, "options": {"wait_for_model": True}}, timeout=10)
+            if response.status_code == 200:
+                result = response.json()
+                if isinstance(result, list) and len(result) > 0:
+                    if isinstance(result[0], list):
+                        if isinstance(result[0][0], list):
+                            return [res[0] for res in result]
+                        return result
+            print(f"[WARN] HF API status {response.status_code}, response: {response.text}")
+        except Exception as e:
+            print(f"[ERROR] HF Embedding failed: {e}")
+        return [[0.0] * 384 for _ in texts]
+
+    def embed_query(self, text):
+        try:
+            response = requests.post(self.api_url, headers=self.headers, json={"inputs": [text], "options": {"wait_for_model": True}}, timeout=10)
+            if response.status_code == 200:
+                result = response.json()
+                if isinstance(result, list) and len(result) > 0:
+                    if isinstance(result[0], list):
+                        if isinstance(result[0][0], list):
+                            return result[0][0]
+                        return result[0]
+            print(f"[WARN] HF API query status {response.status_code}, response: {response.text}")
+        except Exception as e:
+            print(f"[ERROR] HF Query Embedding failed: {e}")
+        return [0.0] * 384
+
+class JSONVectorStore:
+    def __init__(self, bot_id, embeddings_model):
+        self.bot_id = bot_id
+        self.embeddings_model = embeddings_model
+        self.chunks = []
+        self.embeddings = []
+
+    @classmethod
+    def load_local(cls, folder_path, embeddings_model):
+        json_path = os.path.join(folder_path, "index.json")
+        store = cls(os.path.basename(folder_path), embeddings_model)
+        if os.path.exists(json_path):
+            with open(json_path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+                store.chunks = data.get("chunks", [])
+                store.embeddings = data.get("embeddings", [])
+        else:
+            raise FileNotFoundError(f"No JSON index found at {json_path}")
+        return store
+
+    def save_local(self, folder_path):
+        os.makedirs(folder_path, exist_ok=True)
+        json_path = os.path.join(folder_path, "index.json")
+        with open(json_path, "w", encoding="utf-8") as f:
+            json.dump({
+                "chunks": self.chunks,
+                "embeddings": self.embeddings
+            }, f, indent=2)
+
+    @classmethod
+    def from_texts(cls, texts, embeddings_model):
+        store = cls("", embeddings_model)
+        store.chunks = texts
+        store.embeddings = embeddings_model.embed_documents(texts)
+        return store
+
+    def as_retriever(self, search_kwargs=None):
+        return JSONRetriever(self, search_kwargs)
+
+class JSONRetriever:
+    def __init__(self, store, search_kwargs=None):
+        self.store = store
+        self.k = search_kwargs.get("k", 3) if search_kwargs else 3
+
+    def invoke(self, query):
+        if not self.store.chunks or not self.store.embeddings:
+            return []
+        query_vector = self.store.embeddings_model.embed_query(query)
+        scores = []
+        for i, doc_vector in enumerate(self.store.embeddings):
+            sim = self._cosine_similarity(query_vector, doc_vector)
+            scores.append((sim, self.store.chunks[i]))
+        scores.sort(key=lambda x: x[0], reverse=True)
+        
+        class Document:
+            def __init__(self, page_content):
+                self.page_content = page_content
+        return [Document(chunk) for score, chunk in scores[:self.k]]
+
+    def _cosine_similarity(self, a, b):
+        dot_product = sum(x*y for x, y in zip(a, b))
+        norm_a = sum(x*x for x in a) ** 0.5
+        norm_b = sum(y*y for y in b) ** 0.5
+        if norm_a == 0 or norm_b == 0:
+            return 0.0
+        return dot_product / (norm_a * norm_b)
+
+embeddings = HuggingFaceAPIEmbeddings()
 
 # Cache in-memory loaded retrievers and brand configurations
 _retrievers_cache = {}
@@ -101,7 +199,7 @@ def load_bot_config(bot_id):
     return default_config
 
 def get_retriever(bot_id):
-    """Retrieve the FAISS vector store retriever for a specific bot_id"""
+    """Retrieve the JSON vector store retriever for a specific bot_id"""
     if bot_id in _retrievers_cache:
         return _retrievers_cache[bot_id]
         
@@ -109,18 +207,22 @@ def get_retriever(bot_id):
     base_dir = "/tmp" if os.environ.get("VERCEL") == "1" else "."
     vector_store_path = os.path.join(base_dir, "vector_stores", bot_id)
     
-    if not os.path.exists(vector_store_path):
+    if not os.path.exists(vector_store_path) or not os.path.exists(os.path.join(vector_store_path, "index.json")):
         # Fall back to packaged read-only directory
         vector_store_path = os.path.join("vector_stores", bot_id)
         
-    if os.path.exists(vector_store_path):
-        print(f"[INFO] Loading vector store for {bot_id}...")
-        vectorstore = FAISS.load_local(vector_store_path, embeddings, allow_dangerous_deserialization=True)
-        retriever = vectorstore.as_retriever(search_kwargs={"k": 3})
-        _retrievers_cache[bot_id] = retriever
-        return retriever
+    if os.path.exists(vector_store_path) and os.path.exists(os.path.join(vector_store_path, "index.json")):
+        print(f"[INFO] Loading JSON vector store for {bot_id}...")
+        try:
+            vectorstore = JSONVectorStore.load_local(vector_store_path, embeddings)
+            retriever = vectorstore.as_retriever(search_kwargs={"k": 3})
+            _retrievers_cache[bot_id] = retriever
+            return retriever
+        except Exception as e:
+            print(f"[ERROR] Failed to load JSON vector store for {bot_id}: {e}")
+            return None
     else:
-        print(f"[WARN] No vector store found at {vector_store_path}. Returning None.")
+        print(f"[WARN] No JSON vector store found at {vector_store_path}. Returning None.")
         return None
 
 # -------------------------
@@ -1086,7 +1188,7 @@ def config_upload():
             texts = text_splitter.split_text(knowledge_base)
             
             if texts:
-                vectorstore = FAISS.from_texts(texts, embeddings)
+                vectorstore = JSONVectorStore.from_texts(texts, embeddings)
                 base_dir = "/tmp" if os.environ.get("VERCEL") == "1" else "."
                 vector_store_path = os.path.join(base_dir, "vector_stores", bot_id)
                 os.makedirs(vector_store_path, exist_ok=True)

@@ -41,7 +41,19 @@ def build_vector_store(bot_id):
         vectorstore = FAISS.from_documents(all_docs, embeddings)
         os.makedirs(os.path.dirname(dest_path), exist_ok=True)
         vectorstore.save_local(dest_path)
-        print(f"[OK] Vector store compiled successfully for '{bot_id}' with {len(all_docs)} total chunks")
+        
+        # Save JSON pre-computed embeddings index
+        import json
+        texts = [doc.page_content for doc in all_docs]
+        doc_embeddings = embeddings.embed_documents(texts)
+        json_path = os.path.join(dest_path, "index.json")
+        with open(json_path, "w", encoding="utf-8") as f:
+            json.dump({
+                "chunks": texts,
+                "embeddings": doc_embeddings
+            }, f, indent=2)
+            
+        print(f"[OK] Vector store (FAISS & JSON) compiled successfully for '{bot_id}' with {len(all_docs)} total chunks")
         return True
     else:
         print(f"[ERROR] No documents loaded for '{bot_id}'")
