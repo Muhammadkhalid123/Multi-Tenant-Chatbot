@@ -1,14 +1,35 @@
 (function() {
-    // 1. Detect Host URL from script src, default to local origin
+    // 1. Detect Host URL and dynamic configuration from script src/attributes
     const scriptElement = document.currentScript;
     let hostUrl = window.location.origin;
-    if (scriptElement && scriptElement.src) {
-        try {
-            const url = new URL(scriptElement.src);
-            hostUrl = url.origin;
-        } catch (e) {
-            console.warn("[SPC Widget] Failed to parse script origin, defaulting to local origin.");
+    let botId = 'self_publishing';
+    let apiBase = '';
+
+    if (scriptElement) {
+        // Read data- attributes
+        if (scriptElement.dataset.botId) {
+            botId = scriptElement.dataset.botId;
         }
+        if (scriptElement.dataset.apiBase) {
+            apiBase = scriptElement.dataset.apiBase;
+        }
+        
+        // Read query parameters from script src
+        if (scriptElement.src) {
+            try {
+                const url = new URL(scriptElement.src);
+                hostUrl = url.origin;
+                const urlParams = new URLSearchParams(url.search);
+                if (urlParams.has('bot_id')) botId = urlParams.get('bot_id');
+                if (urlParams.has('api_base')) apiBase = urlParams.get('api_base');
+            } catch (e) {
+                console.warn("[SPC Widget] Failed to parse script origin, defaulting to local origin.");
+            }
+        }
+    }
+    
+    if (!apiBase) {
+        apiBase = hostUrl;
     }
 
     // Prevent duplicate injection
@@ -110,7 +131,7 @@
     const iframe = document.createElement('iframe');
     iframe.id = 'spc-chat-iframe';
     // Do not set source immediately for lazy loading optimization
-    iframe.dataset.src = `${hostUrl}/widget`;
+    iframe.dataset.src = `${hostUrl}/widget?bot_id=${encodeURIComponent(botId)}&api_base=${encodeURIComponent(apiBase)}`;
     container.appendChild(iframe);
     document.body.appendChild(container);
 

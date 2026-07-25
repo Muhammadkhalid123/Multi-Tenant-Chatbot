@@ -537,8 +537,8 @@
                 <div class="header-title-container">
                     <div class="status-dot"></div>
                     <div>
-                        <h2 class="header-title">Consultation Assistant</h2>
-                        <span class="header-subtitle">Self Publishing Consultant</span>
+                        <h2 class="header-title" id="headerTitleText">Consultation Assistant</h2>
+                        <span class="header-subtitle" id="headerSubtitleText">Chatbot</span>
                     </div>
                 </div>
                 <!-- Reset Conversation -->
@@ -553,18 +553,16 @@
             <div class="chat-messages" id="chatMessages">
                 <!-- Welcome Message -->
                 <div class="message bot-message">
-                    <div class="avatar">SPC</div>
-                    <div class="bubble">
-                        Hello! Welcome to <strong>Self Publishing Consultant</strong>. I am here to help guide you on your journey from manuscript to global bookshelf. 
-                        <br><br>
-                        Whether you need information about manuscript assessment, cover design, professional layout and formatting, global distribution, or launch marketing, feel free to ask me anything!
+                    <div class="avatar" id="botAvatarText">BOT</div>
+                    <div class="bubble" id="welcomeMessageBubble">
+                        Loading...
                     </div>
                 </div>
             </div>
 
             <!-- Typing Indicator -->
             <div class="typing-indicator-container" id="typingIndicator">
-                <div class="avatar" style="background: var(--bg-sidebar); border: 1px solid var(--border-glow); color: var(--primary-light);">SPC</div>
+                <div class="avatar" id="botTypingAvatarText" style="background: var(--bg-sidebar); border: 1px solid var(--border-glow); color: var(--primary-light);">BOT</div>
                 <div class="typing-bubble">
                     <div class="typing-dot"></div>
                     <div class="typing-dot"></div>
@@ -639,10 +637,13 @@
     </div>
 
     <script>
-        // Configuration - dynamically fetches the server base origin (no hardcoding)
+        const urlParams = new URLSearchParams(window.location.search);
+        const botId = urlParams.get('bot_id') || 'self_publishing';
+        const apiBaseUrl = urlParams.get('api_base') || window.location.origin;
+
         const CONFIG = {
-            API_BASE_URL: window.location.origin,
-            SESSION_STORAGE_KEY: 'spc_widget_session_id'
+            API_BASE_URL: apiBaseUrl,
+            SESSION_STORAGE_KEY: `spc_widget_session_id_${botId}`
         };
         
         // Retrieve or generate unique session ID
@@ -654,6 +655,39 @@
         
         let isSubmitting = false;
         let detectedInterests = new Set();
+        let botInitials = 'BOT';
+
+        // Fetch brand-specific config on load
+        async function fetchAndApplyConfig() {
+            try {
+                const response = await fetch(`${CONFIG.API_BASE_URL}/config/${botId}`);
+                if (!response.ok) throw new Error("Branding configuration not found");
+                const data = await response.json();
+                
+                // Set page title and chat headers
+                document.title = `${data.brand_name} - Chat Assistant`;
+                document.getElementById('headerTitleText').innerHTML = data.brand_name;
+                document.getElementById('headerSubtitleText').innerHTML = 'Online';
+                
+                // Get initials
+                botInitials = data.brand_name.split(' ').map(n => n[0]).join('').slice(0, 3).toUpperCase();
+                document.getElementById('botAvatarText').textContent = botInitials;
+                document.getElementById('botTypingAvatarText').textContent = botInitials;
+                
+                // Set welcome message
+                document.getElementById('welcomeMessageBubble').innerHTML = data.welcome_message;
+                
+                // Apply dynamic CSS variables
+                document.documentElement.style.setProperty('--primary', data.primary_color);
+                document.documentElement.style.setProperty('--primary-light', data.primary_light_color);
+            } catch (error) {
+                console.error("[Widget] Failed to load brand config, falling back to defaults.", error);
+                document.getElementById('headerTitleText').innerHTML = 'Chat Assistant';
+                document.getElementById('welcomeMessageBubble').innerHTML = 'Hello! How can I help you today?';
+            }
+        }
+        
+        fetchAndApplyConfig();
 
         function updateInterestTags(interestsList) {
             if (!interestsList || interestsList.length === 0) return;
@@ -702,7 +736,8 @@
                     },
                     body: JSON.stringify({
                         question: message,
-                        session_id: sessionId
+                        session_id: sessionId,
+                        bot_id: botId
                     })
                 });
                 
@@ -743,7 +778,7 @@
             
             const avatarDiv = document.createElement('div');
             avatarDiv.className = 'avatar';
-            avatarDiv.textContent = sender === 'user' ? 'ME' : 'SPC';
+            avatarDiv.textContent = sender === 'user' ? 'ME' : botInitials;
             
             const bubbleDiv = document.createElement('div');
             bubbleDiv.className = 'bubble';
@@ -874,6 +909,7 @@
                         email: email,
                         phone: phone,
                         session_id: sessionId,
+                        bot_id: botId,
                         interested_services: [...detectedInterests]
                     })
                 });
@@ -941,21 +977,21 @@
                             'Content-Type': 'application/json',
                         },
                         body: JSON.stringify({
-                            session_id: sessionId
+                            session_id: sessionId,
+                            bot_id: botId
                         })
                     });
                     
                     const messagesDiv = document.getElementById('chatMessages');
                     messagesDiv.innerHTML = `
                         <div class="message bot-message">
-                            <div class="avatar">SPC</div>
-                            <div class="bubble">
-                                Hello! Welcome to <strong>Self Publishing Consultant</strong>. I am here to help guide you on your journey from manuscript to global bookshelf. 
-                                <br><br>
-                                Whether you need information about manuscript assessment, cover design, professional layout and formatting, global distribution, or launch marketing, feel free to ask me anything!
+                            <div class="avatar" id="botAvatarText">${botInitials}</div>
+                            <div class="bubble" id="welcomeMessageBubble">
+                                Loading...
                             </div>
                         </div>
                     `;
+                    await fetchAndApplyConfig();
                 } catch (e) {
                     console.error("Failed to clear session:", e);
                 }

@@ -50,7 +50,12 @@ init_db()
 # -------------------------
 # Multi-tenant Config & Vector Store Loader
 # -------------------------
-embeddings = FastEmbedEmbeddings(model_name="sentence-transformers/all-MiniLM-L6-v2")
+# Use /tmp for caching on Vercel since the default user home directory is read-only
+cache_dir = "/tmp/fastembed_cache" if os.environ.get("VERCEL") == "1" else None
+embeddings = FastEmbedEmbeddings(
+    model_name="sentence-transformers/all-MiniLM-L6-v2",
+    cache_dir=cache_dir
+)
 
 # Cache in-memory loaded retrievers and brand configurations
 _retrievers_cache = {}
