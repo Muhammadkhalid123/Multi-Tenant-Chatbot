@@ -45,119 +45,118 @@ def init_db():
 init_db()
 
 # -------------------------
-# Multi-tenant Config & Vector Store Loader (Lightweight Custom JSON Vector Store)
+# Multi-tenant Config & Atlas Vector Search
 # -------------------------
-class HuggingFaceAPIEmbeddings:
-    def __init__(self, model_name="sentence-transformers/all-MiniLM-L6-v2", api_key=None):
-        self.model_name = model_name
-        self.api_url = f"https://api-inference.huggingface.co/pipeline/feature-extraction/{model_name}"
-        token = api_key or os.getenv("HF_TOKEN") or os.getenv("HF_API_KEY")
-        self.headers = {"Authorization": f"Bearer {token}"} if token else {}
 
-    def embed_documents(self, texts):
-        if not texts:
-            return []
-        try:
-            response = requests.post(self.api_url, headers=self.headers, json={"inputs": texts, "options": {"wait_for_model": True}}, timeout=10)
-            if response.status_code == 200:
-                result = response.json()
-                if isinstance(result, list) and len(result) > 0:
-                    if isinstance(result[0], list):
-                        if isinstance(result[0][0], list):
-                            return [res[0] for res in result]
-                        return result
-            print(f"[WARN] HF API status {response.status_code}, response: {response.text}")
-        except Exception as e:
-            print(f"[ERROR] HF Embedding failed: {e}")
-        return [[0.0] * 384 for _ in texts]
+# MongoDB collection for knowledge-base chunks
+_chunks_col = db.chunks
 
-    def embed_query(self, text):
-        try:
-            response = requests.post(self.api_url, headers=self.headers, json={"inputs": [text], "options": {"wait_for_model": True}}, timeout=10)
-            if response.status_code == 200:
-                result = response.json()
-                if isinstance(result, list) and len(result) > 0:
-                    if isinstance(result[0], list):
-                        if isinstance(result[0][0], list):
-                            return result[0][0]
-                        return result[0]
-            print(f"[WARN] HF API query status {response.status_code}, response: {response.text}")
-        except Exception as e:
-            print(f"[ERROR] HF Query Embedding failed: {e}")
-        return [0.0] * 384
-
-class JSONVectorStore:
-    def __init__(self, bot_id, embeddings_model):
-        self.bot_id = bot_id
-        self.embeddings_model = embeddings_model
-        self.chunks = []
-        self.embeddings = []
-
-    @classmethod
-    def load_local(cls, folder_path, embeddings_model):
-        json_path = os.path.join(folder_path, "index.json")
-        store = cls(os.path.basename(folder_path), embeddings_model)
-        if os.path.exists(json_path):
-            with open(json_path, "r", encoding="utf-8") as f:
-                data = json.load(f)
-                store.chunks = data.get("chunks", [])
-                store.embeddings = data.get("embeddings", [])
-        else:
-            raise FileNotFoundError(f"No JSON index found at {json_path}")
-        return store
-
-    def save_local(self, folder_path):
-        os.makedirs(folder_path, exist_ok=True)
-        json_path = os.path.join(folder_path, "index.json")
-        with open(json_path, "w", encoding="utf-8") as f:
-            json.dump({
-                "chunks": self.chunks,
-                "embeddings": self.embeddings
-            }, f, indent=2)
-
-    @classmethod
-    def from_texts(cls, texts, embeddings_model):
-        store = cls("", embeddings_model)
-        store.chunks = texts
-        store.embeddings = embeddings_model.embed_documents(texts)
-        return store
-
-    def as_retriever(self, search_kwargs=None):
-        return JSONRetriever(self, search_kwargs)
-
-class JSONRetriever:
-    def __init__(self, store, search_kwargs=None):
-        self.store = store
-        self.k = search_kwargs.get("k", 3) if search_kwargs else 3
-
-    def invoke(self, query):
-        if not self.store.chunks or not self.store.embeddings:
-            return []
-        query_vector = self.store.embeddings_model.embed_query(query)
-        scores = []
-        for i, doc_vector in enumerate(self.store.embeddings):
-            sim = self._cosine_similarity(query_vector, doc_vector)
-            scores.append((sim, self.store.chunks[i]))
-        scores.sort(key=lambda x: x[0], reverse=True)
-        
-        class Document:
-            def __init__(self, page_content):
-                self.page_content = page_content
-        return [Document(chunk) for score, chunk in scores[:self.k]]
-
-    def _cosine_similarity(self, a, b):
-        dot_product = sum(x*y for x, y in zip(a, b))
-        norm_a = sum(x*x for x in a) ** 0.5
-        norm_b = sum(y*y for y in b) ** 0.5
-        if norm_a == 0 or norm_b == 0:
-            return 0.0
-        return dot_product / (norm_a * norm_b)
-
-embeddings = HuggingFaceAPIEmbeddings()
-
-# Cache in-memory loaded retrievers and brand configurations
-_retrievers_cache = {}
+# In-memory cache for tenant configs only (retrievers are no longer cached locally)
 _config_cache = {}
+
+# HuggingFace Inference API — used at query time to embed the user's question
+_HF_API_URL = (
+    "https://api-inference.huggingface.co/pipeline/feature-extraction/"
+    "sentence-transformers/all-MiniLM-L6-v2"
+)
+_HF_HEADERS = (
+    {"Authorization": f"Bearer {os.getenv('HF_TOKEN') or os.getenv('HF_API_KEY')}"}
+    if (os.getenv("HF_TOKEN") or os.getenv("HF_API_KEY"))
+    else {}
+)
+
+
+def embed_query(text: str) -> list:
+    """Embed a single query string via HuggingFace Inference API (384 dims)."""
+    try:
+        resp = requests.post(
+            _HF_API_URL,
+            headers=_HF_HEADERS,
+            json={"inputs": [text], "options": {"wait_for_model": True}},
+            timeout=10,
+        )
+        if resp.status_code == 200:
+            result = resp.json()
+            if isinstance(result, list) and result:
+                if isinstance(result[0], list):
+                    # result is [[float, ...]] or [[[float, ...]]]
+                    return result[0][0] if isinstance(result[0][0], list) else result[0]
+        print(f"[WARN] HF embed_query status {resp.status_code}: {resp.text}")
+    except Exception as e:
+        print(f"[ERROR] embed_query failed: {e}")
+    return [0.0] * 384
+
+
+def embed_texts(texts: list) -> list:
+    """Embed a batch of texts via HuggingFace Inference API (384 dims each)."""
+    if not texts:
+        return []
+    try:
+        resp = requests.post(
+            _HF_API_URL,
+            headers=_HF_HEADERS,
+            json={"inputs": texts, "options": {"wait_for_model": True}},
+            timeout=30,
+        )
+        if resp.status_code == 200:
+            result = resp.json()
+            if isinstance(result, list) and result:
+                if isinstance(result[0], list):
+                    return (
+                        [r[0] for r in result]
+                        if isinstance(result[0][0], list)
+                        else result
+                    )
+        print(f"[WARN] HF embed_texts status {resp.status_code}: {resp.text}")
+    except Exception as e:
+        print(f"[ERROR] embed_texts failed: {e}")
+    return [[0.0] * 384 for _ in texts]
+
+
+def store_chunks_to_mongo(bot_id: str, texts: list, vectors: list, source: str = "upload"):
+    """
+    Replaces all chunks for bot_id in the Atlas 'chunks' collection.
+    Enforces tenant isolation at the storage layer — not just in app logic.
+    """
+    _chunks_col.delete_many({"bot_id": bot_id})
+    if not texts:
+        return
+    docs = [
+        {"bot_id": bot_id, "text": text, "embedding": vector, "source": source}
+        for text, vector in zip(texts, vectors)
+    ]
+    _chunks_col.insert_many(docs)
+    print(f"[INFO] Stored {len(docs)} chunks in MongoDB for '{bot_id}'")
+
+
+def retrieve_context(bot_id: str, query: str, top_k: int = 3) -> str:
+    """
+    Retrieves the top-k relevant knowledge-base chunks for a query using
+    Atlas Vector Search ($vectorSearch). The bot_id filter provides
+    tenant isolation at the query layer.
+    Returns a single string with chunks joined by double newlines.
+    """
+    query_vector = embed_query(query)
+    try:
+        pipeline = [
+            {
+                "$vectorSearch": {
+                    "index": "chunk_vector_index",
+                    "path": "embedding",
+                    "queryVector": query_vector,
+                    "numCandidates": 100,
+                    "limit": top_k,
+                    "filter": {"bot_id": {"$eq": bot_id}},
+                }
+            },
+            {"$project": {"text": 1, "source": 1, "_id": 0}},
+        ]
+        results = list(_chunks_col.aggregate(pipeline))
+        if results:
+            return "\n\n".join(r["text"] for r in results)
+    except Exception as e:
+        print(f"[ERROR] Atlas $vectorSearch failed for '{bot_id}': {e}")
+    return ""
 
 def load_bot_config(bot_id):
     """Load configuration for a specific chatbot brand"""
@@ -406,9 +405,8 @@ def ask():
     if not question:
         return jsonify({"error": "No message provided"}), 400
 
-    # Load brand config and retriever
+    # Load brand config
     config = load_bot_config(bot_id)
-    retriever = get_retriever(bot_id)
 
     # Track service interests from this message
     new_interests = extract_interests_from_message(question)
@@ -421,15 +419,13 @@ def ask():
     history_text = "\n".join([f"User: {msg['user']}\nBot: {msg['bot']}" 
                               for msg in session_history[-3:]])
     
-    # Get context from the bot's specific retriever
+    # Get context from Atlas Vector Search
     context = ""
-    if retriever:
-        try:
-            docs = retriever.invoke(question)
-            context = "\n\n".join([doc.page_content for doc in docs])
-            context = context[:4000]  # Limit context size
-        except Exception as e:
-            print(f"[ERROR] Retrieval failed for {bot_id}: {e}")
+    try:
+        context = retrieve_context(bot_id, question, top_k=3)
+        context = context[:4000]  # Limit context size
+    except Exception as e:
+        print(f"[ERROR] Retrieval failed for {bot_id}: {e}")
     
     # Inject the user's known name into the history context
     known_name = user_names.get(session_id, "")
@@ -1181,23 +1177,16 @@ def config_upload():
         if bot_id in _config_cache:
             del _config_cache[bot_id]
             
-        # Compile vector store if knowledge base is provided
+        # Embed and persist knowledge base chunks to MongoDB Atlas
         if knowledge_base:
-            print(f"[INFO] Compiling vector store for {bot_id} via API upload...")
+            print(f"[INFO] Embedding and storing chunks for {bot_id} via API upload...")
             text_splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=200)
             texts = text_splitter.split_text(knowledge_base)
-            
+
             if texts:
-                vectorstore = JSONVectorStore.from_texts(texts, embeddings)
-                base_dir = "/tmp" if os.environ.get("VERCEL") == "1" else "."
-                vector_store_path = os.path.join(base_dir, "vector_stores", bot_id)
-                os.makedirs(vector_store_path, exist_ok=True)
-                vectorstore.save_local(vector_store_path)
-                
-                # Invalidate retrievers cache to force reload on next chat
-                if bot_id in _retrievers_cache:
-                    del _retrievers_cache[bot_id]
-                print(f"[OK] Vector store compiled successfully via API for '{bot_id}'")
+                vectors = embed_texts(texts)
+                store_chunks_to_mongo(bot_id, texts, vectors, source="upload")
+                print(f"[OK] Knowledge base stored in Atlas for '{bot_id}' ({len(texts)} chunks)")
             else:
                 return jsonify({"error": "Failed to extract chunks from the knowledge base"}), 400
                 
