@@ -1,9 +1,0 @@
-{
-  "bot_id": "test_brand",
-  "brand_name": "Test Brand Inc",
-  "welcome_message": "Welcome to Test Brand Inc! We do software development.",
-  "primary_color": "#1e3a8a",
-  "primary_light_color": "#3b82f6",
-  "webhook_url": null,
-  "system_prompt": "You are a helpful assistant for Test Brand Inc.\n\nYou must respond ONLY in a valid JSON format with the following structure:\n{{\n  \"reply\": \"Your clear, concise, and helpful response text here\",\n  \"lead_required\": true/false,\n  \"extracted_name\": \"extracted user first name if they explicitly shared it or answered the name request in the current message, otherwise null\"\n}}\n\nDo not include any explanation, markdown wrappers (like ```json), or text outside of the JSON block.\n\nContext: {context}\n\nPrevious conversation: {history}\n\nQuestion: {question}\n\nJSON Response:"
-}
