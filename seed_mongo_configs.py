@@ -44,7 +44,9 @@ def seed_configs():
                 "primary_color": data.get("primary_color", "#d97706"),
                 "primary_light_color": data.get("primary_light_color", "#fbbf24"),
                 "webhook_url": data.get("webhook_url"),
-                "system_prompt": data.get("system_prompt")
+                "system_prompt": data.get("system_prompt"),
+                "admin_username": data.get("admin_username"),
+                "admin_password": data.get("admin_password")
             }
 
             # Upsert into bot_configs collection
