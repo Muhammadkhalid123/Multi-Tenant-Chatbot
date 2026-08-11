@@ -8,3 +8,4 @@ langchain-openai
 python-dotenv
 pymongo
 gunicorn
+flask-limiter
