@@ -441,7 +441,7 @@ def send_to_webhook(name, email, phone, webhook_url):
 # -------------------------
 @app.route("/")
 def index():
-    return send_from_directory('frontend', 'index.html')
+    return redirect(url_for("admin_login", bot_id="tecwrites"))
 
 def parse_llm_json_response(llm_output):
     """
@@ -785,8 +785,12 @@ ADMIN_LOGIN_HTML = """<!DOCTYPE html>
         <p>Access the Self Publishing Consultant Lead Portal</p>
         <form method="POST">
             <div class="input-group">
+                <label>Username</label>
+                <input type="text" name="username" placeholder="Enter administrative username" required autofocus>
+            </div>
+            <div class="input-group">
                 <label>Password</label>
-                <input type="password" name="password" placeholder="Enter administrative password" required autofocus>
+                <input type="password" name="password" placeholder="Enter administrative password" required>
             </div>
             <button type="submit" class="btn">Authenticate</button>
             {% if error %}
@@ -1357,14 +1361,22 @@ def get_bot_config(bot_id):
 def admin_login(bot_id):
     error = None
     if request.method == "POST":
-        password = request.form.get("password")
+        username = request.form.get("username", "").strip()
+        password = request.form.get("password", "")
         config = load_bot_config(bot_id)
+        
+        tenant_username = config.get("admin_username")
         tenant_password_hash = config.get("admin_password")
-        if tenant_password_hash and check_password_hash(tenant_password_hash, password):
+        
+        # Fallback if tenant didn't set a username
+        if not tenant_username:
+            tenant_username = "admin"
+            
+        if tenant_password_hash and tenant_username and username == tenant_username and check_password_hash(tenant_password_hash, password):
             session["admin_logged_in_bot"] = bot_id
             return redirect(url_for("admin_chats", bot_id=bot_id))
         else:
-            error = "Invalid administrative password"
+            error = "Invalid administrative credentials"
     return render_template_string(ADMIN_LOGIN_HTML, error=error)
 
 @app.route("/admin/<bot_id>/chats", methods=["GET"])
