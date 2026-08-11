@@ -2,6 +2,8 @@ import sys
 sys.stdout.reconfigure(encoding='utf-8')
 from flask import Flask, request, jsonify, send_from_directory, session, redirect, url_for, render_template_string
 from flask_cors import CORS
+from flask_limiter import Limiter
+from flask_limiter.util import get_remote_address
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_ollama import OllamaLLM
 from langchain_openai import ChatOpenAI
@@ -18,6 +20,21 @@ from dotenv import load_dotenv
 from collections import defaultdict
 from pymongo import MongoClient
 from bson.objectid import ObjectId
+import secrets
+import hashlib
+import string
+from werkzeug.security import generate_password_hash, check_password_hash
+from werkzeug.utils import secure_filename
+import ipaddress
+import socket
+from urllib.parse import urlparse
+import re
+import hmac
+
+BOT_ID_PATTERN = re.compile(r'^[a-z0-9_]{3,50}$')
+
+def is_valid_bot_id(bot_id: str) -> bool:
+    return bool(BOT_ID_PATTERN.match(bot_id))
 
 load_dotenv()
 
@@ -27,8 +44,35 @@ mongo_client = MongoClient(MONGO_URI)
 db = mongo_client.get_default_database()
 
 app = Flask(__name__)
-CORS(app)
-app.secret_key = os.getenv("ADMIN_PASSWORD", "default-secret-key-123456")
+# Restrict CORS to known origins if configured
+allowed_origins = os.getenv("ALLOWED_ORIGINS", "*").split(",")
+if "*" in allowed_origins:
+    CORS(app)
+else:
+    CORS(app, origins=allowed_origins)
+
+# Separate session signing secret from ADMIN_PASSWORD
+app.secret_key = os.getenv("FLASK_SECRET_KEY", secrets.token_hex(32))
+
+def get_tenant_limiter_key():
+    try:
+        data = request.get_json(silent=True, force=True) or {}
+        bot_id = data.get("bot_id", "unknown").strip()
+    except Exception:
+        bot_id = "unknown"
+    return f"{bot_id}:{get_remote_address()}"
+
+limiter = Limiter(
+    get_tenant_limiter_key,
+    app=app,
+    storage_uri=os.getenv("REDIS_URL", "memory://"),
+)
+
+def hash_key(key: str) -> str:
+    return hashlib.sha256(key.encode()).hexdigest()
+
+def scoped_key(bot_id: str, session_id: str) -> str:
+    return f"{bot_id}:{session_id}"
 
 # -------------------------
 # MongoDB Database Initialization
@@ -82,9 +126,10 @@ def embed_query(text: str) -> list:
                     # result is [[float, ...]] or [[[float, ...]]]
                     return result[0][0] if isinstance(result[0][0], list) else result[0]
         print(f"[WARN] HF embed_query status {resp.status_code}: {resp.text}")
+        raise RuntimeError(f"HF API returned {resp.status_code}")
     except Exception as e:
         print(f"[ERROR] embed_query failed: {e}")
-    return [0.0] * 384
+        raise
 
 
 def embed_texts(texts: list) -> list:
@@ -108,9 +153,10 @@ def embed_texts(texts: list) -> list:
                         else result
                     )
         print(f"[WARN] HF embed_texts status {resp.status_code}: {resp.text}")
+        raise RuntimeError(f"HF API returned {resp.status_code}")
     except Exception as e:
         print(f"[ERROR] embed_texts failed: {e}")
-    return [[0.0] * 384 for _ in texts]
+        raise
 
 
 def store_chunks_to_mongo(bot_id: str, texts: list, vectors: list, source: str = "upload"):
@@ -136,7 +182,12 @@ def retrieve_context(bot_id: str, query: str, top_k: int = 3) -> str:
     tenant isolation at the query layer.
     Returns a single string with chunks joined by double newlines.
     """
-    query_vector = embed_query(query)
+    try:
+        query_vector = embed_query(query)
+    except Exception as e:
+        print(f"[WARN] Skipping retrieval due to embedding failure: {e}")
+        return ""
+        
     try:
         pipeline = [
             {
@@ -175,7 +226,12 @@ def load_bot_config(bot_id):
         print(f"[ERROR] Failed to load config from database for {bot_id}: {e}")
         
     # 2. Fall back to configuration file config/<bot_id>.json
-    config_path = os.path.join("config", f"{bot_id}.json")
+    safe_bot_id = secure_filename(bot_id)
+    if safe_bot_id != bot_id:
+        print(f"[WARN] Rejected suspicious bot_id for config file lookup: {bot_id!r}")
+        return _default_config(bot_id)
+
+    config_path = os.path.join("config", f"{safe_bot_id}.json")
     if os.path.exists(config_path):
         try:
             with open(config_path, "r", encoding="utf-8") as f:
@@ -186,7 +242,10 @@ def load_bot_config(bot_id):
             print(f"[ERROR] Failed to load config file for {bot_id}: {e}")
             
     # 3. Fall back to default config values
-    default_config = {
+    return _default_config(bot_id)
+
+def _default_config(bot_id):
+    return {
         "bot_id": bot_id,
         "brand_name": bot_id.replace("_", " ").title(),
         "welcome_message": f"Hello! Welcome to {bot_id.replace('_', ' ').title()} Chat Assistant. How can I help you today?",
@@ -195,34 +254,6 @@ def load_bot_config(bot_id):
         "webhook_url": None,
         "system_prompt": "You are a helpful assistant. Answer the user's questions clearly and concisely.\n\nContext: {context}\n\nPrevious conversation: {history}\n\nQuestion: {question}\n\nJSON Response:"
     }
-    return default_config
-
-def get_retriever(bot_id):
-    """Retrieve the JSON vector store retriever for a specific bot_id"""
-    if bot_id in _retrievers_cache:
-        return _retrievers_cache[bot_id]
-        
-    # Check /tmp first if running on Vercel
-    base_dir = "/tmp" if os.environ.get("VERCEL") == "1" else "."
-    vector_store_path = os.path.join(base_dir, "vector_stores", bot_id)
-    
-    if not os.path.exists(vector_store_path) or not os.path.exists(os.path.join(vector_store_path, "index.json")):
-        # Fall back to packaged read-only directory
-        vector_store_path = os.path.join("vector_stores", bot_id)
-        
-    if os.path.exists(vector_store_path) and os.path.exists(os.path.join(vector_store_path, "index.json")):
-        print(f"[INFO] Loading JSON vector store for {bot_id}...")
-        try:
-            vectorstore = JSONVectorStore.load_local(vector_store_path, embeddings)
-            retriever = vectorstore.as_retriever(search_kwargs={"k": 3})
-            _retrievers_cache[bot_id] = retriever
-            return retriever
-        except Exception as e:
-            print(f"[ERROR] Failed to load JSON vector store for {bot_id}: {e}")
-            return None
-    else:
-        print(f"[WARN] No JSON vector store found at {vector_store_path}. Returning None.")
-        return None
 
 # -------------------------
 # LLM setup - Support Ollama and Groq (OpenAI-compatible)
@@ -337,10 +368,60 @@ def extract_interests_from_message(question):
 # -------------------------
 # Webhook Helper
 # -------------------------
+def is_safe_webhook_url(url: str) -> tuple[bool, str]:
+    """
+    Validates a tenant-supplied webhook URL to prevent SSRF.
+    Returns (is_safe, reason_if_not).
+    """
+    try:
+        parsed = urlparse(url)
+    except Exception:
+        return False, "Malformed URL"
+
+    if parsed.scheme != "https":
+        return False, "Only https:// URLs are allowed"
+
+    hostname = parsed.hostname
+    if not hostname:
+        return False, "URL must include a hostname"
+
+    blocked_hostnames = {"localhost", "metadata.google.internal"}
+    if hostname.lower() in blocked_hostnames:
+        return False, "Hostname is not allowed"
+
+    try:
+        resolved_ips = socket.getaddrinfo(hostname, None)
+    except socket.gaierror:
+        return False, "Hostname could not be resolved"
+
+    for family, _, _, _, sockaddr in resolved_ips:
+        ip_str = sockaddr[0]
+        try:
+            ip = ipaddress.ip_address(ip_str)
+        except ValueError:
+            return False, "Invalid resolved IP"
+
+        if (
+            ip.is_private
+            or ip.is_loopback
+            or ip.is_link_local
+            or ip.is_reserved
+            or ip.is_multicast
+            or ip.is_unspecified
+        ):
+            return False, f"Resolved IP {ip_str} is in a blocked range"
+
+    return True, ""
+
 def send_to_webhook(name, email, phone, webhook_url):
     if not webhook_url:
         return
         
+    safe, reason = is_safe_webhook_url(webhook_url)
+    if not safe:
+        print(f"[SECURITY] Blocked webhook call to unsafe URL: {reason}")
+        return
+
     payload = {
         "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
         "form_type": "Contact Form",
@@ -350,7 +431,7 @@ def send_to_webhook(name, email, phone, webhook_url):
     }
     
     try:
-        requests.post(webhook_url, json=payload, timeout=5)
+        requests.post(webhook_url, json=payload, timeout=5, allow_redirects=False)
         print("[INFO] Successfully sent lead to Webhook.")
     except Exception as e:
         print(f"[ERROR] Failed to send lead to Webhook: {e}")
@@ -396,11 +477,13 @@ def parse_llm_json_response(llm_output):
     return llm_output, False, None
 
 @app.route("/ask", methods=["POST"])
+@limiter.limit("30/minute")
 def ask():
     data = request.get_json()
     question = data.get("question", "").strip()
     session_id = data.get("session_id", "default")
     bot_id = data.get("bot_id", "self_publishing").strip()
+    skey = scoped_key(bot_id, session_id)
     
     if not question:
         return jsonify({"error": "No message provided"}), 400
@@ -410,10 +493,10 @@ def ask():
 
     # Track service interests from this message
     new_interests = extract_interests_from_message(question)
-    session_interests[session_id].update(new_interests)
+    session_interests[skey].update(new_interests)
 
     # Get session history
-    session_history = chat_sessions[session_id]
+    session_history = chat_sessions[skey]
     
     # Simple history text (last 3 exchanges only)
     history_text = "\n".join([f"User: {msg['user']}\nBot: {msg['bot']}" 
@@ -428,7 +511,7 @@ def ask():
         print(f"[ERROR] Retrieval failed for {bot_id}: {e}")
     
     # Inject the user's known name into the history context
-    known_name = user_names.get(session_id, "")
+    known_name = user_names.get(skey, "")
     name_context = f"The user's name is {known_name}. Use their name naturally in your replies.\n" if known_name and known_name != "__awaiting__" else ""
 
     # Build prompt dynamically using config prompt template
@@ -453,11 +536,11 @@ def ask():
         # Parse JSON response
         answer_text, lead_required, extracted_name = parse_llm_json_response(raw_answer)
         
-        is_awaiting_name = session_id in user_names and user_names[session_id] == "__awaiting__"
+        is_awaiting_name = skey in user_names and user_names[skey] == "__awaiting__"
         if extracted_name:
-            user_names[session_id] = extracted_name
+            user_names[skey] = extracted_name
         elif is_awaiting_name:
-            user_names[session_id] = ""
+            user_names[skey] = ""
         
     except Exception as e:
         print(f"[ERROR] LLM Invocation failed: {e}")
@@ -468,8 +551,8 @@ def ask():
     
     # After very first exchange: ask for user's name
     is_first_message = len(session_history) == 0
-    if is_first_message and session_id not in user_names:
-        user_names[session_id] = "__awaiting__"
+    if is_first_message and skey not in user_names:
+        user_names[skey] = "__awaiting__"
         answer_text = answer_text + "\n\nBy the way, may I know your name? I'd love to address you personally throughout our conversation."
 
     # Save to session history
@@ -482,10 +565,6 @@ def ask():
     if len(session_history) > 10:
         session_history.pop(0)
     
-    # Introduce 3 seconds delay in replying
-    import time
-    time.sleep(3)
-    
     return jsonify({
         "lead_required": lead_required,
         "answer": answer_text,
@@ -496,6 +575,7 @@ def ask():
 # Lead capture endpoint
 # -------------------------
 @app.route("/lead", methods=["POST"])
+@limiter.limit("20/hour")
 def lead():
     data = request.get_json()
     if not data:
@@ -507,12 +587,13 @@ def lead():
     session_id = data.get("session_id", "default")
     bot_id = data.get("bot_id", "self_publishing").strip()
     interested_services = data.get("interested_services", [])
+    skey = scoped_key(bot_id, session_id)
 
     # Load brand config
     config = load_bot_config(bot_id)
 
     # Merge server-side tracked interests
-    server_interests = list(session_interests.get(session_id, set()))
+    server_interests = list(session_interests.get(skey, set()))
     all_interests = list(set(interested_services + server_interests))
 
     errors = []
@@ -526,7 +607,7 @@ def lead():
 
     try:
         # Get session history transcript
-        session_history = chat_sessions.get(session_id, [])
+        session_history = chat_sessions.get(skey, [])
         transcript_text = "\n".join([f"User: {msg['user']}\nBot: {msg['bot']}" for msg in session_history])
 
         # LLM Lead Extraction
@@ -583,32 +664,18 @@ Do not include any explanation, markdown wrappers (like ```json), or text outsid
             db.chats.insert_one(lead_document)
         except Exception as e:
             print(f"[ERROR] Failed to save lead to MongoDB: {e}")
-
-        # Save lead to JSON file (backup)
-        lead_data = {
-            "name": name,
-            "email": email,
-            "phone": phone,
-            "interested_services": extracted_services if extracted_services else "General Inquiry",
-            "timestamp": datetime.now().isoformat(),
-            "session_id": session_id,
-            "summary": extracted_summary,
-            "transcript": transcript_text,
-            "bot_id": bot_id
-        }
-        save_lead_to_json(lead_data)
         
         # Fire-and-forget to Webhook (brand-specific or global fallback)
         webhook_url = config.get("webhook_url") or os.getenv("WEBHOOK_URL")
         threading.Thread(target=send_to_webhook, args=(name, email, phone, webhook_url)).start()
 
         # Clear session
-        if session_id in session_interests:
-            del session_interests[session_id]
-        if session_id in chat_sessions:
-            chat_sessions[session_id].clear()
-        if session_id in user_names:
-            del user_names[session_id]
+        if skey in session_interests:
+            del session_interests[skey]
+        if skey in chat_sessions:
+            chat_sessions[skey].clear()
+        if skey in user_names:
+            del user_names[skey]
 
         return jsonify({
             "success": True,
@@ -623,48 +690,10 @@ Do not include any explanation, markdown wrappers (like ```json), or text outsid
         return jsonify({"errors": ["Failed to save. Please try again."]}), 500
 
 
-def save_lead_to_json(lead_data):
-    """Save lead data to JSON file"""
-    LEADS_DIR = "/tmp/leads" if os.environ.get("VERCEL") == "1" else "leads"
-    LEADS_JSON = os.path.join(LEADS_DIR, "lead_capture.json")
-    os.makedirs(LEADS_DIR, exist_ok=True)
-    try:
-        existing_data = []
-        if os.path.exists(LEADS_JSON):
-            with open(LEADS_JSON, "r", encoding="utf-8") as f:
-                content = f.read()
-                if content:
-                    existing_data = json.loads(content)
-        
-        existing_data.append(lead_data)
-        
-        with open(LEADS_JSON, "w", encoding="utf-8") as f:
-            json.dump(existing_data, f, indent=2)
-    except Exception as e:
-        print(f"[ERROR] Failed to write lead to json: {e}")
-        raise
-
-
-# -------------------------
-# Sales team: View leads (JSON backup)
-# -------------------------
-@app.route("/leads/view", methods=["GET"])
-def view_leads():
-    if not session.get("admin_logged_in"):
-        return jsonify({"error": "Unauthorized"}), 401
-    
-    LEADS_DIR = "/tmp/leads" if os.environ.get("VERCEL") == "1" else "leads"
-    LEADS_JSON = os.path.join(LEADS_DIR, "lead_capture.json")
-    if not os.path.exists(LEADS_JSON):
-        return jsonify({"leads": [], "total": 0})
-    
-    try:
-        with open(LEADS_JSON, "r", encoding="utf-8") as f:
-            content = f.read()
-            leads = json.loads(content) if content else []
-        return jsonify({"leads": leads, "total": len(leads)})
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
+# DELETED: /leads/view route.
+# Superseded by /admin/<bot_id>/chats, which is tenant-scoped.
+# The old route read leads/lead_capture.json, a single file combining
+# every tenant's leads with no bot_id filtering — unsafe to keep or "fix in place."
 
 
 # -------------------------
@@ -879,20 +908,9 @@ ADMIN_CHATS_HTML = """<!DOCTYPE html>
 <body>
     <div class="container">
         <header>
-            <h1>Lead Dashboard — Multi-Tenant</h1>
-            <a href="/admin/logout" class="logout-btn">Log Out</a>
+            <h1>Lead Dashboard — {{ selected_bot_id }}</h1>
+            <a href="/admin/{{ selected_bot_id }}/logout" class="logout-btn">Log Out</a>
         </header>
-        <div style="padding: 20px 30px 0 30px; display: flex; align-items: center; gap: 10px;">
-            <form method="GET" action="/admin/chats" style="display: flex; align-items: center; gap: 10px;">
-                <label for="bot_id_select" style="display: inline; text-transform: none; font-size: 13.5px; font-weight: normal; color: var(--text-main);">Filter by Chatbot:</label>
-                <select id="bot_id_select" name="bot_id" onchange="this.form.submit()" style="padding: 6px 12px; background: rgba(15, 23, 42, 0.8); border: 1px solid var(--border); border-radius: 6px; color: var(--text-main); font-size: 13px; outline: none; cursor: pointer;">
-                    <option value="">-- All Chatbots --</option>
-                    {% for b in all_bots %}
-                        <option value="{{ b }}" {% if b == selected_bot_id %}selected{% endif %}>{{ b }}</option>
-                    {% endfor %}
-                </select>
-            </form>
-        </div>
         <div class="table-container">
             {% if chats %}
             <table>
@@ -909,7 +927,7 @@ ADMIN_CHATS_HTML = """<!DOCTYPE html>
                 </thead>
                 <tbody>
                     {% for chat in chats %}
-                    <tr class="chat-row" onclick="window.location.href='/admin/chats/{{ chat.id }}'">
+                    <tr class="chat-row" onclick="window.location.href='/admin/{{ selected_bot_id }}/chats/{{ chat.id }}'">
                         <td class="date">{{ chat.started_at }}</td>
                         <td style="color: var(--primary-light); font-weight: 600;">{{ chat.bot_id if chat.bot_id else 'General' }}</td>
                         <td class="name">{{ chat.name }}</td>
@@ -927,7 +945,7 @@ ADMIN_CHATS_HTML = """<!DOCTYPE html>
                             {% endif %}
                         </td>
                         <td class="summary">{{ chat.summary }}</td>
-                        <td><a href="/admin/chats/{{ chat.id }}" class="action-link">View Details →</a></td>
+                        <td><a href="/admin/{{ selected_bot_id }}/chats/{{ chat.id }}" class="action-link">View Details →</a></td>
                     </tr>
                     {% endfor %}
                 </tbody>
@@ -1057,7 +1075,7 @@ ADMIN_DETAIL_HTML = """<!DOCTYPE html>
 </head>
 <body>
     <div class="container">
-        <a href="/admin/chats" class="back-link">← Back to Lead Dashboard</a>
+        <a href="/admin/{{ chat.bot_id }}/chats" class="back-link">← Back to Lead Dashboard</a>
         <div class="grid">
             <!-- Left Panel: Extracted Details -->
             <div class="card">
@@ -1132,7 +1150,11 @@ ADMIN_DETAIL_HTML = """<!DOCTYPE html>
 # -------------------------
 # Dynamic Configuration Upload Endpoint
 # -------------------------
+creation_limiter_key = lambda: f"config_create:{get_remote_address()}"
+
 @app.route("/config/upload", methods=["POST"])
+@limiter.limit("10/hour")
+@limiter.limit("10/hour", key_func=creation_limiter_key)
 def config_upload():
     """
     Allows a brand's admin panel to upload its configuration and raw knowledge base markdown.
@@ -1145,56 +1167,167 @@ def config_upload():
     bot_id = data.get("bot_id", "").strip()
     brand_name = data.get("brand_name", "").strip()
     system_prompt = data.get("system_prompt", "").strip()
+    api_key = request.headers.get("X-Tenant-Api-Key", "")
     
-    if not bot_id or not brand_name or not system_prompt:
-        return jsonify({"error": "bot_id, brand_name, and system_prompt are required fields"}), 400
+    if not bot_id or not brand_name or not system_prompt or not api_key:
+        return jsonify({"error": "bot_id, brand_name, system_prompt, and X-Tenant-Api-Key header are required fields"}), 400
+
+    if not is_valid_bot_id(bot_id):
+        return jsonify({"error": "bot_id must be 3-50 characters, lowercase letters, numbers, and underscores only"}), 400
+
+    # Validate system prompt for format string safety
+    try:
+        system_prompt.format(context="", history="", question="")
+    except (KeyError, IndexError, ValueError) as e:
+        return jsonify({"error": f"Invalid system_prompt format: {e}. Literal braces must be doubled ({{{{ or }}}})."}), 400
+
+    existing = db.bot_configs.find_one({"bot_id": bot_id})
+    new_tenant_key = None
+
+    if existing:
+        # Must prove ownership to update
+        if not existing.get("api_key_hash") or not hmac.compare_digest(hash_key(api_key), existing["api_key_hash"]):
+            return jsonify({"error": "Unauthorized"}), 401
+    else:
+        # First-time creation: require a platform-level provisioning key
+        provision_key = os.getenv("TENANT_PROVISION_KEY")
+        if not provision_key or not hmac.compare_digest(api_key, provision_key):
+            return jsonify({"error": "Unauthorized to create new bot_id"}), 401
+        
+        # A brand-new tenant must be created with a working admin password —
+        # otherwise nobody can ever log into their lead dashboard until
+        # someone notices and re-uploads config.
+        admin_password_check = data.get("admin_password", "").strip()
+        if not admin_password_check:
+            return jsonify({"error": "admin_password is required when creating a new bot_id"}), 400
+        
+        # Generate the tenant's real ongoing key and return it ONCE
+        new_tenant_key = secrets.token_urlsafe(32)
         
     welcome_message = data.get("welcome_message", f"Hello! Welcome to {brand_name}.").strip()
     primary_color = data.get("primary_color", "#d97706").strip()
     primary_light_color = data.get("primary_light_color", "#fbbf24").strip()
     webhook_url = data.get("webhook_url", "").strip()
+    
+    if webhook_url:
+        safe, reason = is_safe_webhook_url(webhook_url)
+        if not safe:
+            return jsonify({"error": f"Invalid webhook_url: {reason}"}), 400
+
     admin_password = data.get("admin_password", "").strip()
     knowledge_base = data.get("knowledge_base", "").strip()
     
     try:
-        # Save or update in MongoDB
-        db.bot_configs.update_one(
-            {"bot_id": bot_id},
-            {"$set": {
-                "bot_id": bot_id,
-                "brand_name": brand_name,
-                "welcome_message": welcome_message,
-                "primary_color": primary_color,
-                "primary_light_color": primary_light_color,
-                "webhook_url": webhook_url if webhook_url else None,
-                "system_prompt": system_prompt,
-                "admin_password": admin_password if admin_password else None
-            }},
-            upsert=True
-        )
-        
+        # Pre-compute embeddings before starting any database transaction
+        texts = []
+        vectors = []
+        if knowledge_base:
+            print(f"[INFO] Embedding knowledge base chunks for {bot_id} via API upload...")
+            text_splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=200)
+            texts = text_splitter.split_text(knowledge_base)
+            if texts:
+                vectors = embed_texts(texts)
+            else:
+                return jsonify({"error": "Failed to extract chunks from the knowledge base"}), 400
+
+        update_doc = {
+            "bot_id": bot_id,
+            "brand_name": brand_name,
+            "welcome_message": welcome_message,
+            "primary_color": primary_color,
+            "primary_light_color": primary_light_color,
+            "webhook_url": webhook_url if webhook_url else None,
+            "system_prompt": system_prompt,
+            "admin_password": generate_password_hash(admin_password) if admin_password else None
+        }
+        if not existing and new_tenant_key:
+            update_doc["api_key_hash"] = hash_key(new_tenant_key)
+
+        try:
+            with db.client.start_session() as session:
+                with session.start_transaction():
+                    db.bot_configs.update_one(
+                        {"bot_id": bot_id},
+                        {"$set": update_doc},
+                        upsert=True,
+                        session=session
+                    )
+                    
+                    if texts and vectors:
+                        _chunks_col.delete_many({"bot_id": bot_id}, session=session)
+                        docs = [
+                            {"bot_id": bot_id, "text": t, "embedding": v, "source": "upload"}
+                            for t, v in zip(texts, vectors)
+                        ]
+                        _chunks_col.insert_many(docs, session=session)
+        except Exception as tx_err:
+            print(f"[WARN] Transaction failed or not supported, falling back to sequential updates: {tx_err}")
+            # Fallback for standalone Mongo (which doesn't support transactions)
+            db.bot_configs.update_one(
+                {"bot_id": bot_id},
+                {"$set": update_doc},
+                upsert=True
+            )
+            if texts and vectors:
+                store_chunks_to_mongo(bot_id, texts, vectors, source="upload")
+
         # Clear config cache for this bot
         if bot_id in _config_cache:
             del _config_cache[bot_id]
-            
-        # Embed and persist knowledge base chunks to MongoDB Atlas
-        if knowledge_base:
-            print(f"[INFO] Embedding and storing chunks for {bot_id} via API upload...")
-            text_splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=200)
-            texts = text_splitter.split_text(knowledge_base)
 
-            if texts:
-                vectors = embed_texts(texts)
-                store_chunks_to_mongo(bot_id, texts, vectors, source="upload")
-                print(f"[OK] Knowledge base stored in Atlas for '{bot_id}' ({len(texts)} chunks)")
-            else:
-                return jsonify({"error": "Failed to extract chunks from the knowledge base"}), 400
-                
-        return jsonify({"success": True, "message": f"Configuration for '{bot_id}' saved and initialized successfully."})
+        response = {"success": True, "message": f"Configuration for '{bot_id}' saved and initialized successfully."}
+        if not existing and new_tenant_key:
+            response["tenant_api_key"] = new_tenant_key  # show once, tell them to save it
+        return jsonify(response)
         
     except Exception as e:
         print(f"[ERROR] Failed to save dynamic config: {e}")
         return jsonify({"error": str(e)}), 500
+
+@app.route("/config/rotate-key", methods=["POST"])
+@limiter.limit("10/hour", key_func=creation_limiter_key)
+def rotate_tenant_key():
+    """
+    Admin-only recovery path: issues a new tenant_api_key for an existing
+    bot_id when the original key has been lost. Requires the platform
+    provision key, not the tenant's own key — this IS the recovery
+    mechanism for when the tenant's key is unrecoverable.
+    """
+    data = request.get_json()
+    if not data:
+        return jsonify({"error": "No data provided"}), 400
+
+    bot_id = data.get("bot_id", "").strip()
+    provision_key = request.headers.get("X-Provision-Key", "")
+
+    if not bot_id:
+        return jsonify({"error": "bot_id is required"}), 400
+
+    expected_provision_key = os.getenv("TENANT_PROVISION_KEY")
+    if not expected_provision_key or not hmac.compare_digest(provision_key, expected_provision_key):
+        return jsonify({"error": "Unauthorized"}), 401
+
+    existing = db.bot_configs.find_one({"bot_id": bot_id})
+    if not existing:
+        return jsonify({"error": f"No bot_id '{bot_id}' found"}), 404
+
+    new_key = secrets.token_urlsafe(32)
+    db.bot_configs.update_one(
+        {"bot_id": bot_id},
+        {"$set": {"api_key_hash": hash_key(new_key)}}
+    )
+
+    if bot_id in _config_cache:
+        del _config_cache[bot_id]
+
+    print(f"[SECURITY] Tenant API key rotated for bot_id='{bot_id}' by operator")
+
+    return jsonify({
+        "success": True,
+        "bot_id": bot_id,
+        "tenant_api_key": new_key,
+        "message": "New API key issued. The previous key is now invalid. Store this key securely — it will not be shown again."
+    })
 
 # -------------------------
 # Frontend Branding Config Endpoint
@@ -1220,42 +1353,28 @@ def get_bot_config(bot_id):
 # -------------------------
 # Admin Portal Routes
 # -------------------------
-@app.route("/admin", methods=["GET", "POST"])
-def admin_login():
+@app.route("/admin/<bot_id>", methods=["GET", "POST"])
+def admin_login(bot_id):
     error = None
     if request.method == "POST":
         password = request.form.get("password")
-        if password == os.getenv("ADMIN_PASSWORD", "admin123"):
-            session["admin_logged_in"] = True
-            return redirect(url_for("admin_chats"))
+        config = load_bot_config(bot_id)
+        tenant_password_hash = config.get("admin_password")
+        if tenant_password_hash and check_password_hash(tenant_password_hash, password):
+            session["admin_logged_in_bot"] = bot_id
+            return redirect(url_for("admin_chats", bot_id=bot_id))
         else:
             error = "Invalid administrative password"
     return render_template_string(ADMIN_LOGIN_HTML, error=error)
 
-@app.route("/admin/chats", methods=["GET"])
-def admin_chats():
-    if not session.get("admin_logged_in"):
-        return redirect(url_for("admin_login"))
+@app.route("/admin/<bot_id>/chats", methods=["GET"])
+def admin_chats(bot_id):
+    if session.get("admin_logged_in_bot") != bot_id:
+        return redirect(url_for("admin_login", bot_id=bot_id))
         
-    selected_bot_id = request.args.get("bot_id", "").strip()
     try:
-        # Get all distinct bot_ids from database for filtering
-        db_bots = db.chats.distinct("bot_id")
-        db_bots = [b for b in db_bots if b]
-        
-        # Get bot ids from bot_configs table
-        db_config_bots = db.bot_configs.distinct("bot_id")
-        
-        # Also scan the config directory for available bot configs
-        config_bots = []
-        if os.path.exists("config"):
-            config_bots = [f[:-5] for f in os.listdir("config") if f.endswith(".json")]
-            
-        all_bots = sorted(list(set(db_bots + db_config_bots + config_bots)))
-        
         # Query chats from MongoDB
-        query = {"bot_id": selected_bot_id} if selected_bot_id else {}
-        chats_cursor = db.chats.find(query).sort("started_at", -1)
+        chats_cursor = db.chats.find({"bot_id": bot_id}).sort("started_at", -1)
         
         chats = []
         for chat in chats_cursor:
@@ -1266,16 +1385,15 @@ def admin_chats():
     except Exception as e:
         print(f"[ERROR] Failed to query leads: {e}")
         chats = []
-        all_bots = []
         
-    return render_template_string(ADMIN_CHATS_HTML, chats=chats, all_bots=all_bots, selected_bot_id=selected_bot_id)
+    return render_template_string(ADMIN_CHATS_HTML, chats=chats, selected_bot_id=bot_id)
 
-@app.route("/admin/chats/<chat_id>", methods=["GET"])
-def admin_chat_detail(chat_id):
-    if not session.get("admin_logged_in"):
-        return redirect(url_for("admin_login"))
+@app.route("/admin/<bot_id>/chats/<chat_id>", methods=["GET"])
+def admin_chat_detail(bot_id, chat_id):
+    if session.get("admin_logged_in_bot") != bot_id:
+        return redirect(url_for("admin_login", bot_id=bot_id))
     try:
-        chat = db.chats.find_one({"_id": ObjectId(chat_id)})
+        chat = db.chats.find_one({"_id": ObjectId(chat_id), "bot_id": bot_id})
         
         if not chat:
             return "Chat not found", 404
@@ -1297,10 +1415,10 @@ def admin_chat_detail(chat_id):
         
     return render_template_string(ADMIN_DETAIL_HTML, chat=chat, transcript_list=transcript_list)
 
-@app.route("/admin/logout", methods=["GET"])
-def admin_logout():
-    session.pop("admin_logged_in", None)
-    return redirect(url_for("admin_login"))
+@app.route("/admin/<bot_id>/logout", methods=["GET"])
+def admin_logout(bot_id):
+    session.pop("admin_logged_in_bot", None)
+    return redirect(url_for("admin_login", bot_id=bot_id))
 
 # -------------------------
 # Widget Route
@@ -1334,17 +1452,19 @@ def test_llm():
 def clear_session():
     data = request.get_json()
     session_id = data.get("session_id", "default")
+    bot_id = data.get("bot_id", "self_publishing").strip()
+    skey = scoped_key(bot_id, session_id)
     
-    if session_id in chat_sessions:
-        chat_sessions[session_id].clear()
+    if skey in chat_sessions:
+        chat_sessions[skey].clear()
     
     # Also clear the stored name so it can be captured fresh
-    if session_id in user_names:
-        del user_names[session_id]
+    if skey in user_names:
+        del user_names[skey]
 
     # Clear tracked interests
-    if session_id in session_interests:
-        del session_interests[session_id]
+    if skey in session_interests:
+        del session_interests[skey]
     
     return jsonify({"message": "Session cleared"})
 
