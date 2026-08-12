@@ -1,0 +1,63 @@
+{% extends "base.html" %}
+
+{% block title %}Add Brand Wizard - Step 1{% endblock %}
+
+{% block body_class %}bg-background text-on-background min-h-screen flex items-center justify-center p-margin-mobile md:p-margin-desktop relative{% endblock %}
+
+{% block content %}
+<!-- Dimmed Background Overlay -->
+<div class="fixed inset-0 bg-on-background/20 backdrop-blur-sm z-0"></div>
+<!-- Main Modal Card -->
+<div class="relative z-10 w-full max-w-2xl bg-surface rounded-clay p-lg md:p-xl clay-shadow border border-white/50">
+<!-- Header & Step Indicator -->
+<div class="mb-lg">
+<h1 class="font-headline-lg text-headline-lg text-on-background mb-md">Add New Brand</h1>
+<div class="flex items-center gap-sm">
+<!-- Step 1: Active -->
+<div class="flex-1 h-2 bg-primary rounded-full clay-shadow"></div>
+<!-- Step 2: Inactive -->
+<div class="flex-1 h-2 bg-surface-variant rounded-full clay-inset"></div>
+<!-- Step 3: Inactive -->
+<div class="flex-1 h-2 bg-surface-variant rounded-full clay-inset"></div>
+</div>
+<div class="flex justify-between mt-sm text-on-surface-variant">
+<span class="font-label-sm text-label-sm text-primary">Brand Info</span>
+<span class="font-label-sm text-label-sm">Branding</span>
+<span class="font-label-sm text-label-sm">Knowledge Base</span>
+</div>
+</div>
+<!-- Form Fields -->
+<form class="space-y-md" action="/admin/dashboard" method="GET">
+<!-- Brand Name -->
+<div class="flex flex-col gap-xs">
+<label class="font-body-md text-body-md text-on-surface ml-unit" for="brandName">Brand Name</label>
+<input class="w-full bg-surface-container rounded-full px-md py-sm font-body-lg text-body-lg text-on-background border-none clay-inset clay-inset-focus transition-all duration-200" id="brandName" placeholder="e.g., ChatPulse Inc." type="text"/>
+</div>
+<!-- Owner Email -->
+<div class="flex flex-col gap-xs">
+<label class="font-body-md text-body-md text-on-surface ml-unit" for="ownerEmail">Owner Email</label>
+<input class="w-full bg-surface-container rounded-full px-md py-sm font-body-lg text-body-lg text-on-background border-none clay-inset clay-inset-focus transition-all duration-200" id="ownerEmail" placeholder="admin@brand.com" type="email"/>
+</div>
+<!-- Bot ID/Slug -->
+<div class="flex flex-col gap-xs">
+<label class="font-body-md text-body-md text-on-surface ml-unit" for="botSlug">Bot ID / Slug</label>
+<div class="relative">
+<span class="absolute inset-y-0 left-0 flex items-center pl-md text-on-surface-variant font-body-lg text-body-lg">@</span>
+<input class="w-full bg-surface-container rounded-full pl-xl pr-md py-sm font-body-lg text-body-lg text-on-background border-none clay-inset clay-inset-focus transition-all duration-200" id="botSlug" placeholder="brand-bot" type="text"/>
+</div>
+<p class="font-label-sm text-label-sm text-outline ml-unit mt-xs">This will be used for unique bot links and API access.</p>
+</div>
+
+<!-- Navigation Buttons -->
+<div class="mt-xl pt-md flex justify-between items-center border-t border-surface-container-high/50">
+<a href="/admin/dashboard" class="font-body-lg text-body-lg text-on-surface-variant hover:text-primary transition-colors px-md py-sm rounded-full hover:bg-surface-container">
+    Cancel
+</a>
+<button class="bg-primary text-on-primary font-body-lg text-body-lg px-xl py-sm rounded-full clay-shadow hover:scale-[1.02] active:scale-95 transition-all duration-200 flex items-center gap-sm" type="submit">
+    Next
+    <span class="material-symbols-outlined text-lg">arrow_forward</span>
+</button>
+</div>
+</form>
+</div>
+{% endblock %}

@@ -1,0 +1,375 @@
+<!DOCTYPE html>
+
+<html class="light" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Brands Overview - ChatPulse</title>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Quicksand:wght@500;600;700&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<script id="tailwind-config">
+        tailwind.config = {
+          darkMode: "class",
+          theme: {
+            extend: {
+              "colors": {
+                      "primary-fixed": "#dee1ff",
+                      "surface-dim": "#dcd9d9",
+                      "on-primary-container": "#002088",
+                      "secondary-fixed": "#ccebc2",
+                      "inverse-on-surface": "#f3f0f0",
+                      "on-background": "#1b1c1c",
+                      "primary-container": "#7b8ff7",
+                      "surface-tint": "#4156ba",
+                      "on-surface-variant": "#454652",
+                      "surface-container": "#f0eded",
+                      "on-surface": "#1b1c1c",
+                      "inverse-surface": "#303030",
+                      "on-tertiary-fixed": "#331101",
+                      "tertiary-container": "#c4896b",
+                      "tertiary": "#845238",
+                      "primary": "#4156ba",
+                      "on-secondary-fixed-variant": "#334d2f",
+                      "outline-variant": "#c5c5d4",
+                      "on-error-container": "#93000a",
+                      "surface-container-high": "#eae8e7",
+                      "surface": "#fbf9f8",
+                      "tertiary-fixed-dim": "#f9b898",
+                      "background": "#fbf9f8",
+                      "outline": "#757684",
+                      "on-secondary-container": "#4f6a49",
+                      "on-tertiary": "#ffffff",
+                      "on-primary-fixed": "#001159",
+                      "error": "#ba1a1a",
+                      "on-secondary-fixed": "#082007",
+                      "on-tertiary-container": "#4c240e",
+                      "primary-fixed-dim": "#b9c3ff",
+                      "surface-container-lowest": "#ffffff",
+                      "on-tertiary-fixed-variant": "#683b23",
+                      "surface-bright": "#fbf9f8",
+                      "on-secondary": "#ffffff",
+                      "error-container": "#ffdad6",
+                      "on-error": "#ffffff",
+                      "surface-container-highest": "#e4e2e1",
+                      "tertiary-fixed": "#ffdbcb",
+                      "secondary-fixed-dim": "#b1cfa7",
+                      "surface-container-low": "#f6f3f2",
+                      "on-primary-fixed-variant": "#263ca1",
+                      "inverse-primary": "#b9c3ff",
+                      "surface-variant": "#e4e2e1",
+                      "on-primary": "#ffffff",
+                      "secondary-container": "#c9e8bf",
+                      "secondary": "#4a6545"
+              },
+              "borderRadius": {
+                      "DEFAULT": "1rem",
+                      "lg": "2rem",
+                      "xl": "3rem",
+                      "full": "9999px"
+              },
+              "spacing": {
+                      "gutter": "24px",
+                      "unit": "8px",
+                      "lg": "40px",
+                      "sm": "12px",
+                      "margin-desktop": "48px",
+                      "xl": "64px",
+                      "md": "24px",
+                      "margin-mobile": "16px",
+                      "xs": "4px"
+              },
+              "fontFamily": {
+                      "headline-xl": [
+                              "Quicksand"
+                      ],
+                      "label-sm": [
+                              "Quicksand"
+                      ],
+                      "body-md": [
+                              "Quicksand"
+                      ],
+                      "body-lg": [
+                              "Quicksand"
+                      ],
+                      "headline-md": [
+                              "Quicksand"
+                      ],
+                      "headline-lg": [
+                              "Quicksand"
+                      ]
+              },
+              "fontSize": {
+                      "headline-xl": [
+                              "48px",
+                              {
+                                      "lineHeight": "1.2",
+                                      "letterSpacing": "-0.02em",
+                                      "fontWeight": "700"
+                              }
+                      ],
+                      "label-sm": [
+                              "14px",
+                              {
+                                      "lineHeight": "1.4",
+                                      "letterSpacing": "0.01em",
+                                      "fontWeight": "600"
+                              }
+                      ],
+                      "body-md": [
+                              "16px",
+                              {
+                                      "lineHeight": "1.5",
+                                      "fontWeight": "500"
+                              }
+                      ],
+                      "body-lg": [
+                              "18px",
+                              {
+                                      "lineHeight": "1.6",
+                                      "fontWeight": "500"
+                              }
+                      ],
+                      "headline-md": [
+                              "24px",
+                              {
+                                      "lineHeight": "1.3",
+                                      "fontWeight": "600"
+                              }
+                      ],
+                      "headline-lg": [
+                              "32px",
+                              {
+                                      "lineHeight": "1.2",
+                                      "fontWeight": "700"
+                              }
+                      ]
+              }
+      },
+          },
+        }
+    </script>
+<style>
+        body {
+            background-color: #fbf9f8;
+            color: #1b1c1c;
+        }
+        
+        .clay-shadow {
+            box-shadow: 20px 20px 25px 0px rgba(0,0,0,0.15), -20px -20px 20px 0px rgba(255,255,255,0.6);
+        }
+        
+        .clay-shadow-inner {
+            box-shadow: inset 20px 20px 25px 0px rgba(0,0,0,0.05), inset -20px -20px 20px 0px rgba(255,255,255,0.8);
+        }
+
+        .clay-inset {
+            box-shadow: inset 4px 4px 8px rgba(0,0,0,0.1), inset -4px -4px 8px rgba(255,255,255,0.8);
+        }
+        
+        .clay-hover:hover {
+            box-shadow: 25px 25px 30px 0px rgba(0,0,0,0.2), -25px -25px 25px 0px rgba(255,255,255,0.7);
+            transform: scale(1.02);
+        }
+        
+        .clay-active:active {
+            transform: scale(0.95);
+        }
+        
+        /* Smooth transitions */
+        .transition-clay {
+            transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
+        }
+    </style>
+</head>
+<body class="min-h-screen pb-32 md:pb-0 font-body-md text-body-md">
+<!-- TopAppBar from JSON -->
+<header class="w-full top-0 sticky bg-background z-40 px-margin-mobile md:px-margin-desktop py-4 max-w-full flex justify-between items-center clay-shadow">
+<div class="flex items-center gap-sm">
+<img alt="ChatPulse Logo" class="w-10 h-10 rounded-full object-cover shadow-[0px_2px_4px_rgba(0,0,0,0.1)]" src="https://lh3.googleusercontent.com/aida-public/AB6AXuA32Hg2B2CjOAXSEbZpmw1MbczIpNEsjco-japsS-jGpBVHE_l97Vg_Hd3H7sRnUkfUn9ejj5tcWdXr8ucEpumPIS6wmLoljkdUWZUNZ_UxN5MAqIiN2i82Z5CrAtJbnVXhARBNLWi1wiHe_Yo37MvTzveiFs168ZB-07fnrlUfA91Gea9cvhRy1ziyjA7hLIw51dlcbrUBkq5_jEbvfHKlg9Hb1E7KBsU2KqNplMQYo7rNf7FAW7r-4Q"/>
+<h1 class="font-headline-md text-headline-md font-bold text-primary">ChatPulse</h1>
+</div>
+<button class="bg-primary text-on-primary rounded-full px-6 py-3 font-label-sm text-label-sm flex items-center gap-2 clay-shadow clay-hover transition-clay active:scale-95">
+<span class="material-symbols-outlined text-[18px]">add</span>
+            + Add Brand
+        </button>
+</header>
+<main class="max-w-7xl mx-auto px-margin-mobile md:px-margin-desktop py-lg space-y-xl">
+<!-- Stats Row -->
+<section class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-md">
+<!-- Active Brands -->
+<div class="bg-surface rounded-xl p-6 clay-shadow flex flex-col justify-between h-32">
+<div class="flex justify-between items-start">
+<span class="font-body-md text-body-md text-on-surface-variant">Active brands</span>
+<div class="bg-secondary/20 p-2 rounded-full flex items-center justify-center">
+<span class="material-symbols-outlined text-secondary">verified</span>
+</div>
+</div>
+<div class="font-headline-lg text-headline-lg text-on-surface">142</div>
+</div>
+<!-- Suspended Brands -->
+<div class="bg-surface rounded-xl p-6 clay-shadow flex flex-col justify-between h-32">
+<div class="flex justify-between items-start">
+<span class="font-body-md text-body-md text-on-surface-variant">Suspended brands</span>
+<div class="bg-error/20 p-2 rounded-full flex items-center justify-center">
+<span class="material-symbols-outlined text-error">block</span>
+</div>
+</div>
+<div class="font-headline-lg text-headline-lg text-on-surface">12</div>
+</div>
+<!-- Total Leads -->
+<div class="bg-surface rounded-xl p-6 clay-shadow flex flex-col justify-between h-32">
+<div class="flex justify-between items-start">
+<span class="font-body-md text-body-md text-on-surface-variant">Total leads</span>
+<div class="bg-primary/20 p-2 rounded-full flex items-center justify-center">
+<span class="material-symbols-outlined text-primary">group</span>
+</div>
+</div>
+<div class="font-headline-lg text-headline-lg text-on-surface">8,405</div>
+</div>
+<!-- MRR -->
+<div class="bg-surface rounded-xl p-6 clay-shadow flex flex-col justify-between h-32">
+<div class="flex justify-between items-start">
+<span class="font-body-md text-body-md text-on-surface-variant">MRR</span>
+<div class="bg-tertiary/20 p-2 rounded-full flex items-center justify-center">
+<span class="material-symbols-outlined text-tertiary">attach_money</span>
+</div>
+</div>
+<div class="font-headline-lg text-headline-lg text-on-surface">$24.5k</div>
+</div>
+</section>
+<!-- Controls Area -->
+<section class="flex flex-col md:flex-row justify-between items-center gap-md">
+<!-- Search -->
+<div class="w-full md:w-96 relative">
+<span class="material-symbols-outlined absolute left-4 top-1/2 -translate-y-1/2 text-outline">search</span>
+<input class="w-full bg-surface-container-low rounded-full py-3 pl-12 pr-4 border-none focus:ring-2 focus:ring-primary outline-none clay-inset text-on-surface font-body-md transition-all" placeholder="Search brands..." type="text"/>
+</div>
+<!-- Status Filter Tabs -->
+<div class="flex bg-surface-container-low p-1 rounded-full clay-inset w-full md:w-auto overflow-x-auto">
+<button class="px-6 py-2 rounded-full bg-primary-container text-on-primary-container font-label-sm text-label-sm clay-shadow transition-clay whitespace-nowrap">All</button>
+<button class="px-6 py-2 rounded-full text-on-surface-variant font-label-sm text-label-sm hover:bg-surface-container-high transition-colors whitespace-nowrap">Active</button>
+<button class="px-6 py-2 rounded-full text-on-surface-variant font-label-sm text-label-sm hover:bg-surface-container-high transition-colors whitespace-nowrap">Suspended</button>
+<button class="px-6 py-2 rounded-full text-on-surface-variant font-label-sm text-label-sm hover:bg-surface-container-high transition-colors whitespace-nowrap">Pending</button>
+</div>
+</section>
+<!-- Brand List -->
+<section class="space-y-md">
+<!-- List Header (Desktop Only) -->
+<div class="hidden md:grid grid-cols-12 gap-4 px-6 text-on-surface-variant font-label-sm text-label-sm">
+<div class="col-span-4">Brand</div>
+<div class="col-span-2">Status</div>
+<div class="col-span-2">Plan</div>
+<div class="col-span-3 text-right">Metrics</div>
+<div class="col-span-1 text-center">Actions</div>
+</div>
+<!-- Item 1 -->
+<div class="bg-surface rounded-xl p-6 clay-shadow flex flex-col md:grid md:grid-cols-12 gap-4 items-center transition-clay hover:-translate-y-1">
+<!-- Brand Info -->
+<div class="col-span-12 md:col-span-4 flex items-center gap-4 w-full">
+<div class="w-12 h-12 rounded-full bg-surface-container-highest clay-inset overflow-hidden flex-shrink-0">
+<img class="w-full h-full object-cover" data-alt="A clean, abstract geometric logo featuring interlocking blue and green shapes on a soft white background. The logo represents a modern SaaS startup. High quality, crisp vector style representation, well lit, minimalist aesthetic." src="https://lh3.googleusercontent.com/aida-public/AB6AXuCNLfIqknnYS0jZYNqkPwKbziM804jjqc6F1VBftA-LWdYWP1pe2C0KN82BdwNb1kxgHj2hQYysQbPClQepxcq2L2P1H6kzgWvcJYwfN9CuCmI_NPSHVumMcn691gr_lGFo5detDmFMVKoJi7w3oSVuMEAomebxcucUvwFaA7v1H4Dc-K-FcSFSvb4EGja8bMI-aXQI07X1IKAzFfcB02kpCrM9nMld3tQ92_EWqyrbjDnXcJmbJmeXpQ"/>
+</div>
+<div>
+<h3 class="font-headline-md text-headline-md text-on-surface text-[20px]">Acme Corp</h3>
+<p class="font-body-md text-body-md text-on-surface-variant text-[14px]">app.acme.com</p>
+</div>
+</div>
+<!-- Status -->
+<div class="col-span-6 md:col-span-2 w-full md:w-auto flex justify-start">
+<span class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-secondary-container/50 text-on-secondary-container font-label-sm text-[12px]">
+<span class="w-2 h-2 rounded-full bg-secondary"></span>
+                        Active
+                    </span>
+</div>
+<!-- Plan -->
+<div class="col-span-6 md:col-span-2 w-full md:w-auto text-left md:text-left">
+<span class="font-body-md text-body-md text-on-surface">Pro Tier</span>
+</div>
+<!-- Metrics -->
+<div class="col-span-12 md:col-span-3 w-full flex justify-between md:justify-end gap-6 text-on-surface-variant text-[14px]">
+<div class="flex flex-col items-center md:items-end">
+<span class="font-bold text-on-surface">12.4k</span>
+<span>Msgs</span>
+</div>
+<div class="flex flex-col items-center md:items-end">
+<span class="font-bold text-on-surface">842</span>
+<span>Leads</span>
+</div>
+</div>
+<!-- Actions -->
+<div class="col-span-12 md:col-span-1 w-full flex justify-end gap-2">
+<button class="p-2 rounded-full bg-surface-container hover:bg-surface-container-high text-on-surface-variant transition-colors" title="View Details">
+<span class="material-symbols-outlined text-[20px]">visibility</span>
+</button>
+<button class="p-2 rounded-full bg-surface-container hover:bg-surface-container-high text-on-surface-variant transition-colors" title="More Options">
+<span class="material-symbols-outlined text-[20px]">more_vert</span>
+</button>
+</div>
+</div>
+<!-- Item 2 -->
+<div class="bg-surface rounded-xl p-6 clay-shadow flex flex-col md:grid md:grid-cols-12 gap-4 items-center transition-clay hover:-translate-y-1">
+<!-- Brand Info -->
+<div class="col-span-12 md:col-span-4 flex items-center gap-4 w-full">
+<div class="w-12 h-12 rounded-full bg-surface-container-highest clay-inset overflow-hidden flex-shrink-0">
+<img class="w-full h-full object-cover" data-alt="A sleek, modern logo with a stylized letter G in vibrant orange and red tones on a soft white background. The logo looks professional and suitable for a digital agency. Minimalist, high contrast, clean edges." src="https://lh3.googleusercontent.com/aida-public/AB6AXuAf9HCPgz5WGi30BvApFvShVYe1Dn9fR5dif8q3zvQ66n7Qh232D0F-osJvV-O4SlCH0SjYJA9eUtQapf21EG-C7Mq4RlgHyilMOxwjL8Afa1IHSVgTOapmX-9msOgketmSPMnDJHllPp8gw6w3rn3Mb2OYimalidFMlmjwxzJoML7pzeU3u4h-abMv5JtdwkKH-a2cZYqzGWho7vK8gjmprMgDZ8tUKTu55U2VPkQqGSY_Ie3xdwRAaA"/>
+</div>
+<div>
+<h3 class="font-headline-md text-headline-md text-on-surface text-[20px]">Globex</h3>
+<p class="font-body-md text-body-md text-on-surface-variant text-[14px]">globex.io</p>
+</div>
+</div>
+<!-- Status -->
+<div class="col-span-6 md:col-span-2 w-full md:w-auto flex justify-start">
+<span class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-error-container/50 text-on-error-container font-label-sm text-[12px]">
+<span class="w-2 h-2 rounded-full bg-error"></span>
+                        Suspended
+                    </span>
+</div>
+<!-- Plan -->
+<div class="col-span-6 md:col-span-2 w-full md:w-auto text-left md:text-left">
+<span class="font-body-md text-body-md text-on-surface">Starter</span>
+</div>
+<!-- Metrics -->
+<div class="col-span-12 md:col-span-3 w-full flex justify-between md:justify-end gap-6 text-on-surface-variant text-[14px]">
+<div class="flex flex-col items-center md:items-end">
+<span class="font-bold text-on-surface">1.2k</span>
+<span>Msgs</span>
+</div>
+<div class="flex flex-col items-center md:items-end">
+<span class="font-bold text-on-surface">45</span>
+<span>Leads</span>
+</div>
+</div>
+<!-- Actions -->
+<div class="col-span-12 md:col-span-1 w-full flex justify-end gap-2">
+<button class="p-2 rounded-full bg-surface-container hover:bg-surface-container-high text-on-surface-variant transition-colors" title="View Details">
+<span class="material-symbols-outlined text-[20px]">visibility</span>
+</button>
+<button class="p-2 rounded-full bg-surface-container hover:bg-surface-container-high text-on-surface-variant transition-colors" title="More Options">
+<span class="material-symbols-outlined text-[20px]">more_vert</span>
+</button>
+</div>
+</div>
+</section>
+</main>
+<!-- BottomNavBar from JSON (Mobile Only) -->
+<nav class="md:hidden fixed bottom-0 w-full z-50 rounded-t-lg bg-surface shadow-[0px_-10px_25px_0px_rgba(0,0,0,0.1)] left-0 flex justify-around items-center px-4 py-3 pb-safe">
+<a class="flex flex-col items-center justify-center bg-primary-container text-on-primary-container rounded-full px-6 py-2 shadow-[inset_4px_4px_8px_rgba(0,0,0,0.1),inset_-4px_-4px_8px_rgba(255,255,255,0.8)]" href="#">
+<span class="material-symbols-outlined" data-icon="dashboard">dashboard</span>
+<span class="font-label-sm text-label-sm mt-1">Dashboard</span>
+</a>
+<a class="flex flex-col items-center justify-center text-on-surface-variant p-2 hover:bg-surface-container-high rounded-full transition-colors active:scale-90 duration-150" href="#">
+<span class="material-symbols-outlined" data-icon="smart_toy">smart_toy</span>
+<span class="font-label-sm text-label-sm mt-1">Bots</span>
+</a>
+<a class="flex flex-col items-center justify-center text-on-surface-variant p-2 hover:bg-surface-container-high rounded-full transition-colors active:scale-90 duration-150" href="#">
+<span class="material-symbols-outlined" data-icon="analytics">analytics</span>
+<span class="font-label-sm text-label-sm mt-1">Analytics</span>
+</a>
+<a class="flex flex-col items-center justify-center text-on-surface-variant p-2 hover:bg-surface-container-high rounded-full transition-colors active:scale-90 duration-150" href="#">
+<span class="material-symbols-outlined" data-icon="settings">settings</span>
+<span class="font-label-sm text-label-sm mt-1">Settings</span>
+</a>
+</nav>
+</body></html>

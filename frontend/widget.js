@@ -4,6 +4,7 @@
     let hostUrl = window.location.origin;
     let botId = 'self_publishing';
     let apiBase = '';
+    let widgetApiKey = '';
 
     if (scriptElement) {
         // Read data- attributes
@@ -12,6 +13,9 @@
         }
         if (scriptElement.dataset.apiBase) {
             apiBase = scriptElement.dataset.apiBase;
+        }
+        if (scriptElement.dataset.widgetApiKey) {
+            widgetApiKey = scriptElement.dataset.widgetApiKey;
         }
         
         // Read query parameters from script src
@@ -22,6 +26,7 @@
                 const urlParams = new URLSearchParams(url.search);
                 if (urlParams.has('bot_id')) botId = urlParams.get('bot_id');
                 if (urlParams.has('api_base')) apiBase = urlParams.get('api_base');
+                if (urlParams.has('widget_api_key')) widgetApiKey = urlParams.get('widget_api_key');
             } catch (e) {
                 console.warn("[SPC Widget] Failed to parse script origin, defaulting to local origin.");
             }
@@ -131,7 +136,7 @@
     const iframe = document.createElement('iframe');
     iframe.id = 'spc-chat-iframe';
     // Do not set source immediately for lazy loading optimization
-    iframe.dataset.src = `${hostUrl}/widget?bot_id=${encodeURIComponent(botId)}&api_base=${encodeURIComponent(apiBase)}`;
+    iframe.dataset.src = `${hostUrl}/widget?bot_id=${encodeURIComponent(botId)}&api_base=${encodeURIComponent(apiBase)}&widget_api_key=${encodeURIComponent(widgetApiKey)}`;
     container.appendChild(iframe);
     document.body.appendChild(container);
 

@@ -1,0 +1,191 @@
+{% extends "base.html" %}
+
+{% block title %}Brands Overview - ChatPulse{% endblock %}
+
+{% block body_class %}min-h-screen pb-32 md:pb-0 font-body-md text-body-md bg-background text-on-background{% endblock %}
+
+{% block content %}
+<!-- TopAppBar -->
+<header class="w-full top-0 sticky bg-background z-40 px-margin-mobile md:px-margin-desktop py-4 max-w-full flex justify-between items-center clay-shadow">
+<div class="flex items-center gap-sm">
+<img alt="ChatPulse Logo" class="w-10 h-10 rounded-full object-cover shadow-[0px_2px_4px_rgba(0,0,0,0.1)]" src="https://lh3.googleusercontent.com/aida-public/AB6AXuA32Hg2B2CjOAXSEbZpmw1MbczIpNEsjco-japsS-jGpBVHE_l97Vg_Hd3H7sRnUkfUn9ejj5tcWdXr8ucEpumPIS6wmLoljkdUWZUNZ_UxN5MAqIiN2i82Z5CrAtJbnVXhARBNLWi1wiHe_Yo37MvTzveiFs168ZB-07fnrlUfA91Gea9cvhRy1ziyjA7hLIw51dlcbrUBkq5_jEbvfHKlg9Hb1E7KBsU2KqNplMQYo7rNf7FAW7r-4Q"/>
+<h1 class="font-headline-md text-headline-md font-bold text-primary">ChatPulse</h1>
+</div>
+<a href="/admin/brand/new" class="bg-primary text-on-primary rounded-full px-6 py-3 font-label-sm text-label-sm flex items-center gap-2 clay-shadow clay-hover transition-clay active:scale-95">
+<span class="material-symbols-outlined text-[18px]">add</span>
+    + Add Brand
+</a>
+</header>
+<main class="max-w-7xl mx-auto px-margin-mobile md:px-margin-desktop py-lg space-y-xl">
+<!-- Stats Row -->
+<section class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-md">
+<!-- Active Brands -->
+<div class="bg-surface rounded-xl p-6 clay-shadow flex flex-col justify-between h-32">
+<div class="flex justify-between items-start">
+<span class="font-body-md text-body-md text-on-surface-variant">Active brands</span>
+<div class="bg-secondary/20 p-2 rounded-full flex items-center justify-center">
+<span class="material-symbols-outlined text-secondary">verified</span>
+</div>
+</div>
+<div class="font-headline-lg text-headline-lg text-on-surface">142</div>
+</div>
+<!-- Suspended Brands -->
+<div class="bg-surface rounded-xl p-6 clay-shadow flex flex-col justify-between h-32">
+<div class="flex justify-between items-start">
+<span class="font-body-md text-body-md text-on-surface-variant">Suspended brands</span>
+<div class="bg-error/20 p-2 rounded-full flex items-center justify-center">
+<span class="material-symbols-outlined text-error">block</span>
+</div>
+</div>
+<div class="font-headline-lg text-headline-lg text-on-surface">12</div>
+</div>
+<!-- Total Leads -->
+<div class="bg-surface rounded-xl p-6 clay-shadow flex flex-col justify-between h-32">
+<div class="flex justify-between items-start">
+<span class="font-body-md text-body-md text-on-surface-variant">Total leads</span>
+<div class="bg-primary/20 p-2 rounded-full flex items-center justify-center">
+<span class="material-symbols-outlined text-primary">group</span>
+</div>
+</div>
+<div class="font-headline-lg text-headline-lg text-on-surface">8,405</div>
+</div>
+<!-- MRR -->
+<div class="bg-surface rounded-xl p-6 clay-shadow flex flex-col justify-between h-32">
+<div class="flex justify-between items-start">
+<span class="font-body-md text-body-md text-on-surface-variant">MRR</span>
+<div class="bg-tertiary/20 p-2 rounded-full flex items-center justify-center">
+<span class="material-symbols-outlined text-tertiary">attach_money</span>
+</div>
+</div>
+<div class="font-headline-lg text-headline-lg text-on-surface">$24.5k</div>
+</div>
+</section>
+<!-- Controls Area -->
+<section class="flex flex-col md:flex-row justify-between items-center gap-md">
+<!-- Search -->
+<div class="w-full md:w-96 relative">
+<span class="material-symbols-outlined absolute left-4 top-1/2 -translate-y-1/2 text-outline">search</span>
+<input class="w-full bg-surface-container-low rounded-full py-3 pl-12 pr-4 border-none focus:ring-2 focus:ring-primary outline-none clay-inset text-on-surface font-body-md transition-all" placeholder="Search brands..." type="text"/>
+</div>
+<!-- Status Filter Tabs -->
+<div class="flex bg-surface-container-low p-1 rounded-full clay-inset w-full md:w-auto overflow-x-auto">
+<button class="px-6 py-2 rounded-full bg-primary-container text-on-primary-container font-label-sm text-label-sm clay-shadow transition-clay whitespace-nowrap">All</button>
+<button class="px-6 py-2 rounded-full text-on-surface-variant font-label-sm text-label-sm hover:bg-surface-container-high transition-colors whitespace-nowrap">Active</button>
+<button class="px-6 py-2 rounded-full text-on-surface-variant font-label-sm text-label-sm hover:bg-surface-container-high transition-colors whitespace-nowrap">Suspended</button>
+<button class="px-6 py-2 rounded-full text-on-surface-variant font-label-sm text-label-sm hover:bg-surface-container-high transition-colors whitespace-nowrap">Pending</button>
+</div>
+</section>
+<!-- Brand List -->
+<section class="space-y-md">
+<!-- List Header (Desktop Only) -->
+<div class="hidden md:grid grid-cols-12 gap-4 px-6 text-on-surface-variant font-label-sm text-label-sm">
+<div class="col-span-4">Brand</div>
+<div class="col-span-2">Status</div>
+<div class="col-span-2">Plan</div>
+<div class="col-span-3 text-right">Metrics</div>
+<div class="col-span-1 text-center">Actions</div>
+</div>
+<!-- Item 1 -->
+<div class="bg-surface rounded-xl p-6 clay-shadow flex flex-col md:grid md:grid-cols-12 gap-4 items-center transition-clay hover:-translate-y-1">
+<!-- Brand Info -->
+<div class="col-span-12 md:col-span-4 flex items-center gap-4 w-full">
+<div class="w-12 h-12 rounded-full bg-surface-container-highest clay-inset overflow-hidden flex-shrink-0">
+<img class="w-full h-full object-cover" src="https://lh3.googleusercontent.com/aida-public/AB6AXuCNLfIqknnYS0jZYNqkPwKbziM804jjqc6F1VBftA-LWdYWP1pe2C0KN82BdwNb1kxgHj2hQYysQbPClQepxcq2L2P1H6kzgWvcJYwfN9CuCmI_NPSHVumMcn691gr_lGFo5detDmFMVKoJi7w3oSVuMEAomebxcucUvwFaA7v1H4Dc-K-FcSFSvb4EGja8bMI-aXQI07X1IKAzFfcB02kpCrM9nMld3tQ92_EWqyrbjDnXcJmbJmeXpQ"/>
+</div>
+<div>
+<h3 class="font-headline-md text-headline-md text-on-surface text-[20px]">Acme Corp</h3>
+<p class="font-body-md text-body-md text-on-surface-variant text-[14px]">app.acme.com</p>
+</div>
+</div>
+<!-- Status -->
+<div class="col-span-6 md:col-span-2 w-full md:w-auto flex justify-start">
+<span class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-secondary-container/50 text-on-secondary-container font-label-sm text-[12px]">
+<span class="w-2 h-2 rounded-full bg-secondary"></span>
+                        Active
+                    </span>
+</div>
+<!-- Plan -->
+<div class="col-span-6 md:col-span-2 w-full md:w-auto text-left md:text-left">
+<span class="font-body-md text-body-md text-on-surface">Pro Tier</span>
+</div>
+<!-- Metrics -->
+<div class="col-span-12 md:col-span-3 w-full flex justify-between md:justify-end gap-6 text-on-surface-variant text-[14px]">
+<div class="flex flex-col items-center md:items-end">
+<span class="font-bold text-on-surface">12.4k</span>
+<span>Msgs</span>
+</div>
+<div class="flex flex-col items-center md:items-end">
+<span class="font-bold text-on-surface">842</span>
+<span>Leads</span>
+</div>
+</div>
+<!-- Actions -->
+<div class="col-span-12 md:col-span-1 w-full flex justify-end gap-2">
+<a href="/admin/brand/acme_corp" class="p-2 rounded-full bg-surface-container hover:bg-surface-container-high text-on-surface-variant transition-colors" title="View Details">
+<span class="material-symbols-outlined text-[20px]">visibility</span>
+</a>
+</div>
+</div>
+<!-- Item 2 -->
+<div class="bg-surface rounded-xl p-6 clay-shadow flex flex-col md:grid md:grid-cols-12 gap-4 items-center transition-clay hover:-translate-y-1">
+<!-- Brand Info -->
+<div class="col-span-12 md:col-span-4 flex items-center gap-4 w-full">
+<div class="w-12 h-12 rounded-full bg-surface-container-highest clay-inset overflow-hidden flex-shrink-0">
+<img class="w-full h-full object-cover" src="https://lh3.googleusercontent.com/aida-public/AB6AXuAf9HCPgz5WGi30BvApFvShVYe1Dn9fR5dif8q3zvQ66n7Qh232D0F-osJvV-O4SlCH0SjYJA9eUtQapf21EG-C7Mq4RlgHyilMOxwjL8Afa1IHSVgTOapmX-9msOgketmSPMnDJHllPp8gw6w3rn3Mb2OYimalidFMlmjwxzJoML7pzeU3u4h-abMv5JtdwkKH-a2cZYqzGWho7vK8gjmprMgDZ8tUKTu55U2VPkQqGSY_Ie3xdwRAaA"/>
+</div>
+<div>
+<h3 class="font-headline-md text-headline-md text-on-surface text-[20px]">Globex</h3>
+<p class="font-body-md text-body-md text-on-surface-variant text-[14px]">globex.io</p>
+</div>
+</div>
+<!-- Status -->
+<div class="col-span-6 md:col-span-2 w-full md:w-auto flex justify-start">
+<span class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-error-container/50 text-on-error-container font-label-sm text-[12px]">
+<span class="w-2 h-2 rounded-full bg-error"></span>
+                        Suspended
+                    </span>
+</div>
+<!-- Plan -->
+<div class="col-span-6 md:col-span-2 w-full md:w-auto text-left md:text-left">
+<span class="font-body-md text-body-md text-on-surface">Starter</span>
+</div>
+<!-- Metrics -->
+<div class="col-span-12 md:col-span-3 w-full flex justify-between md:justify-end gap-6 text-on-surface-variant text-[14px]">
+<div class="flex flex-col items-center md:items-end">
+<span class="font-bold text-on-surface">1.2k</span>
+<span>Msgs</span>
+</div>
+<div class="flex flex-col items-center md:items-end">
+<span class="font-bold text-on-surface">45</span>
+<span>Leads</span>
+</div>
+</div>
+<!-- Actions -->
+<div class="col-span-12 md:col-span-1 w-full flex justify-end gap-2">
+<a href="/admin/brand/globex" class="p-2 rounded-full bg-surface-container hover:bg-surface-container-high text-on-surface-variant transition-colors" title="View Details">
+<span class="material-symbols-outlined text-[20px]">visibility</span>
+</a>
+</div>
+</div>
+</section>
+</main>
+<!-- BottomNavBar from JSON (Mobile Only) -->
+<nav class="md:hidden fixed bottom-0 w-full z-50 rounded-t-lg bg-surface shadow-[0px_-10px_25px_0px_rgba(0,0,0,0.1)] left-0 flex justify-around items-center px-4 py-3 pb-safe">
+<a class="flex flex-col items-center justify-center bg-primary-container text-on-primary-container rounded-full px-6 py-2 shadow-[inset_4px_4px_8px_rgba(0,0,0,0.1),inset_-4px_-4px_8px_rgba(255,255,255,0.8)]" href="#">
+<span class="material-symbols-outlined" data-icon="dashboard">dashboard</span>
+<span class="font-label-sm text-label-sm mt-1">Dashboard</span>
+</a>
+<a class="flex flex-col items-center justify-center text-on-surface-variant p-2 hover:bg-surface-container-high rounded-full transition-colors active:scale-90 duration-150" href="#">
+<span class="material-symbols-outlined" data-icon="smart_toy">smart_toy</span>
+<span class="font-label-sm text-label-sm mt-1">Bots</span>
+</a>
+<a class="flex flex-col items-center justify-center text-on-surface-variant p-2 hover:bg-surface-container-high rounded-full transition-colors active:scale-90 duration-150" href="#">
+<span class="material-symbols-outlined" data-icon="analytics">analytics</span>
+<span class="font-label-sm text-label-sm mt-1">Analytics</span>
+</a>
+<a class="flex flex-col items-center justify-center text-on-surface-variant p-2 hover:bg-surface-container-high rounded-full transition-colors active:scale-90 duration-150" href="#">
+<span class="material-symbols-outlined" data-icon="settings">settings</span>
+<span class="font-label-sm text-label-sm mt-1">Settings</span>
+</a>
+</nav>
+{% endblock %}

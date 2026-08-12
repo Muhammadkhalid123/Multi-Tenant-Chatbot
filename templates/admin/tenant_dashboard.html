@@ -1,0 +1,195 @@
+{% extends "base.html" %}
+
+{% block title %}Brand Admin Dashboard - ChatPulse{% endblock %}
+
+{% block body_class %}bg-background text-on-background font-body-md min-h-screen flex flex-col md:flex-row pb-safe md:pb-0{% endblock %}
+
+{% block content %}
+<!-- Mobile Top Header -->
+<div class="md:hidden w-full top-0 sticky bg-background flex justify-between items-center px-margin-mobile py-4 max-w-full shadow-[20px_20px_25px_0px_rgba(0,0,0,0.15),-20px_-20px_20px_0px_rgba(255,255,255,0.6)] z-40">
+<div class="flex items-center gap-sm text-primary">
+<span class="material-symbols-outlined text-headline-md" style="font-variation-settings: 'FILL' 1;">bubble_chart</span>
+<span class="text-headline-md font-headline-md font-bold">ChatPulse</span>
+</div>
+</div>
+<!-- Desktop Sidebar -->
+<aside class="hidden md:flex flex-col w-64 h-screen sticky top-0 bg-surface border-r-0 pt-lg pb-md px-md clay-shadow z-40">
+<div class="flex items-center gap-sm text-primary mb-xl pl-2">
+<span class="material-symbols-outlined text-headline-md" style="font-variation-settings: 'FILL' 1;">bubble_chart</span>
+<span class="text-headline-md font-headline-md font-bold">ChatPulse</span>
+</div>
+<nav class="flex-1 flex flex-col gap-sm">
+<a class="flex items-center gap-md px-4 py-3 rounded-full bg-primary-container text-on-primary-container font-label-sm text-label-sm clay-shadow-inner" href="/tenant/dashboard">
+<span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 1;">dashboard</span>
+    Dashboard
+</a>
+<a class="flex items-center gap-md px-4 py-3 rounded-full text-on-surface-variant hover:bg-surface-container-high transition-colors font-label-sm text-label-sm" href="#">
+<span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 0;">smart_toy</span>
+    Bots
+</a>
+<a class="flex items-center gap-md px-4 py-3 rounded-full text-on-surface-variant hover:bg-surface-container-high transition-colors font-label-sm text-label-sm" href="#">
+<span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 0;">analytics</span>
+    Analytics
+</a>
+<a class="flex items-center gap-md px-4 py-3 rounded-full text-on-surface-variant hover:bg-surface-container-high transition-colors font-label-sm text-label-sm" href="#">
+<span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 0;">settings</span>
+    Settings
+</a>
+</nav>
+<div class="mt-auto pt-md flex items-center gap-sm bg-surface-container-lowest rounded-full p-2 clay-shadow-sm">
+<img alt="User Avatar" class="w-10 h-10 rounded-full object-cover border-2 border-white shadow-sm" src="https://lh3.googleusercontent.com/aida-public/AB6AXuBLFuN3HzwzRPlW-aBD1MSgJIp2m23iydwSSjIKUM0b8i12dmAvvA0nLgfYrKFofzazuk9-OR4A-wvJJd7C2JRZDWBEInIyO1oS0hCI_FUQWTyrxEdTWaz08Rwt8GYKTQmWDEukv4o9TEUKM8mYG1S84UbmXZW9a0efvqKQ9BuPLjgCjVBQfh0xSwJn4Xsy38oMu1MuxQBy64Q8BwPPWkWeNqk_3N_NfVKkMBunZ5M0EkUgRLFacTwDYw"/>
+<div class="flex flex-col">
+<span class="font-label-sm text-label-sm text-on-surface">Alex River</span>
+<span class="text-xs text-on-surface-variant">Admin</span>
+</div>
+</div>
+</aside>
+<!-- Main Content Canvas -->
+<main class="flex-1 p-margin-mobile md:p-margin-desktop lg:p-xl flex flex-col gap-md lg:gap-lg overflow-y-auto bg-background">
+<!-- Header -->
+<header class="hidden md:flex justify-between items-center mb-md">
+<div>
+<h1 class="font-headline-lg text-headline-lg text-on-background">Acme Corp Dashboard</h1>
+<p class="font-body-md text-body-md text-on-surface-variant mt-xs">Overview for your active Chatbot instance.</p>
+</div>
+<button class="bg-primary text-on-primary font-label-sm text-label-sm px-6 py-3 rounded-full clay-shadow hover:scale-[1.02] transition-transform duration-200 active:scale-95">
+    Download Report
+</button>
+</header>
+<div class="md:hidden mb-md">
+<h1 class="font-headline-md text-headline-md text-on-background">Acme Corp</h1>
+<p class="font-body-md text-body-md text-on-surface-variant mt-xs">Dashboard Overview</p>
+</div>
+<!-- Stat Cards (Bento style grid) -->
+<section class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-md">
+<!-- Card 1 -->
+<div class="bg-surface-container-lowest rounded-lg p-lg clay-shadow clay-hover flex flex-col justify-between h-48">
+<div class="flex justify-between items-start">
+<span class="font-label-sm text-label-sm text-on-surface-variant">Total Conversations</span>
+<div class="w-10 h-10 rounded-full bg-primary-fixed flex items-center justify-center clay-shadow-sm">
+<span class="material-symbols-outlined text-primary">forum</span>
+</div>
+</div>
+<div>
+<span class="font-headline-xl text-headline-xl text-on-surface">1,284</span>
+<div class="flex items-center gap-xs mt-2 text-secondary">
+<span class="material-symbols-outlined text-[16px]">trending_up</span>
+<span class="font-label-sm text-label-sm">+12% this week</span>
+</div>
+</div>
+</div>
+<!-- Card 2 -->
+<div class="bg-surface-container-lowest rounded-lg p-lg clay-shadow clay-hover flex flex-col justify-between h-48">
+<div class="flex justify-between items-start">
+<span class="font-label-sm text-label-sm text-on-surface-variant">Total Leads (Month)</span>
+<div class="w-10 h-10 rounded-full bg-secondary-fixed flex items-center justify-center clay-shadow-sm">
+<span class="material-symbols-outlined text-on-secondary-container">group_add</span>
+</div>
+</div>
+<div>
+<span class="font-headline-xl text-headline-xl text-on-surface">342</span>
+<div class="flex items-center gap-xs mt-2 text-secondary">
+<span class="material-symbols-outlined text-[16px]">trending_up</span>
+<span class="font-label-sm text-label-sm">+5% this month</span>
+</div>
+</div>
+</div>
+<!-- Card 3 (Featured/Accent) -->
+<div class="bg-primary text-on-primary rounded-lg p-lg clay-shadow clay-hover flex flex-col justify-between h-48 col-span-1 md:col-span-2 xl:col-span-1 relative overflow-hidden">
+<div class="absolute -bottom-10 -right-10 w-40 h-40 bg-white/10 rounded-full blur-2xl pointer-events-none"></div>
+<div class="flex justify-between items-start relative z-10">
+<span class="font-label-sm text-label-sm opacity-90">Bot Engagement Rate</span>
+<div class="w-10 h-10 rounded-full bg-white/20 flex items-center justify-center">
+<span class="material-symbols-outlined text-white">bolt</span>
+</div>
+</div>
+<div class="relative z-10">
+<span class="font-headline-xl text-headline-xl text-white">68%</span>
+<p class="font-body-md text-body-md mt-2 opacity-90">Higher than industry average.</p>
+</div>
+</div>
+</section>
+<!-- Leads Table Section -->
+<section class="mt-md flex-1">
+<div class="flex justify-between items-center mb-md">
+<h2 class="font-headline-md text-headline-md text-on-background">Recent Leads</h2>
+<button class="text-primary font-label-sm text-label-sm flex items-center gap-xs hover:underline">
+    View All <span class="material-symbols-outlined text-[18px]">arrow_forward</span>
+</button>
+</div>
+<div class="flex flex-col gap-sm">
+<!-- Row 1 -->
+<div class="bg-surface-container-lowest rounded-DEFAULT p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 clay-shadow-sm hover:scale-[1.01] transition-transform">
+<div class="flex items-center gap-md">
+<div class="w-12 h-12 rounded-full bg-tertiary-fixed flex items-center justify-center text-on-tertiary-container font-headline-md text-headline-md">JD</div>
+<div>
+<p class="font-body-lg text-body-lg text-on-surface font-semibold">Jane Doe</p>
+<p class="font-body-md text-body-md text-on-surface-variant text-sm">jane.d@example.com</p>
+</div>
+</div>
+<div class="flex items-center gap-2 flex-wrap">
+<span class="px-3 py-1 rounded-full bg-primary-fixed/50 text-primary-fixed-dim text-on-primary-fixed font-label-sm text-[12px] clay-shadow-inner">Pricing</span>
+<span class="px-3 py-1 rounded-full bg-secondary-fixed/50 text-on-secondary-fixed font-label-sm text-[12px] clay-shadow-inner">Enterprise</span>
+</div>
+<div class="font-body-md text-body-md text-on-surface-variant text-sm sm:w-24 sm:text-right">
+Oct 24, 2023
+</div>
+</div>
+<!-- Row 2 -->
+<div class="bg-surface-container-lowest rounded-DEFAULT p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 clay-shadow-sm hover:scale-[1.01] transition-transform">
+<div class="flex items-center gap-md">
+<div class="w-12 h-12 rounded-full bg-primary-fixed flex items-center justify-center text-on-primary-fixed font-headline-md text-headline-md">MS</div>
+<div>
+<p class="font-body-lg text-body-lg text-on-surface font-semibold">Mike Smith</p>
+<p class="font-body-md text-body-md text-on-surface-variant text-sm">mike@startup.io</p>
+</div>
+</div>
+<div class="flex items-center gap-2 flex-wrap">
+<span class="px-3 py-1 rounded-full bg-tertiary-fixed/50 text-on-tertiary-fixed font-label-sm text-[12px] clay-shadow-inner">Support</span>
+</div>
+<div class="font-body-md text-body-md text-on-surface-variant text-sm sm:w-24 sm:text-right">
+Oct 23, 2023
+</div>
+</div>
+<!-- Row 3 -->
+<div class="bg-surface-container-lowest rounded-DEFAULT p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 clay-shadow-sm hover:scale-[1.01] transition-transform">
+<div class="flex items-center gap-md">
+<div class="w-12 h-12 rounded-full bg-secondary-fixed flex items-center justify-center text-on-secondary-fixed font-headline-md text-headline-md">SL</div>
+<div>
+<p class="font-body-lg text-body-lg text-on-surface font-semibold">Sarah Lee</p>
+<p class="font-body-md text-body-md text-on-surface-variant text-sm">slee@agency.co</p>
+</div>
+</div>
+<div class="flex items-center gap-2 flex-wrap">
+<span class="px-3 py-1 rounded-full bg-primary-fixed/50 text-on-primary-fixed font-label-sm text-[12px] clay-shadow-inner">Demo Request</span>
+<span class="px-3 py-1 rounded-full bg-error-container/50 text-on-error-container font-label-sm text-[12px] clay-shadow-inner">Urgent</span>
+</div>
+<div class="font-body-md text-body-md text-on-surface-variant text-sm sm:w-24 sm:text-right">
+Oct 22, 2023
+</div>
+</div>
+</div>
+</section>
+<!-- Bottom spacing for mobile nav -->
+<div class="h-24 md:hidden"></div>
+</main>
+<!-- Mobile Bottom Nav Bar -->
+<nav class="md:hidden fixed bottom-0 left-0 w-full flex justify-around items-center px-4 py-3 pb-safe bg-surface shadow-[0px_-10px_25px_0px_rgba(0,0,0,0.1)] z-50 rounded-t-lg">
+<a class="flex flex-col items-center justify-center bg-primary-container text-on-primary-container rounded-full px-6 py-2 shadow-[inset_4px_4px_8px_rgba(0,0,0,0.1),inset_-4px_-4px_8px_rgba(255,255,255,0.8)] font-label-sm text-label-sm active:scale-90 duration-150" href="#">
+<span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 1;">dashboard</span>
+<span class="mt-1 text-[10px]">Dashboard</span>
+</a>
+<a class="flex flex-col items-center justify-center text-on-surface-variant p-2 font-label-sm text-label-sm hover:bg-surface-container-high rounded-full transition-colors active:scale-90 duration-150" href="#">
+<span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 0;">smart_toy</span>
+<span class="mt-1 text-[10px]">Bots</span>
+</a>
+<a class="flex flex-col items-center justify-center text-on-surface-variant p-2 font-label-sm text-label-sm hover:bg-surface-container-high rounded-full transition-colors active:scale-90 duration-150" href="#">
+<span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 0;">analytics</span>
+<span class="mt-1 text-[10px]">Analytics</span>
+</a>
+<a class="flex flex-col items-center justify-center text-on-surface-variant p-2 font-label-sm text-label-sm hover:bg-surface-container-high rounded-full transition-colors active:scale-90 duration-150" href="#">
+<span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 0;">settings</span>
+<span class="mt-1 text-[10px]">Settings</span>
+</a>
+</nav>
+{% endblock %}

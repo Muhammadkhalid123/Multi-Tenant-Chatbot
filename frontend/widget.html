@@ -640,9 +640,11 @@
         const urlParams = new URLSearchParams(window.location.search);
         const botId = urlParams.get('bot_id') || 'self_publishing';
         const apiBaseUrl = urlParams.get('api_base') || window.location.origin;
+        const widgetApiKey = urlParams.get('widget_api_key') || '';
 
         const CONFIG = {
             API_BASE_URL: apiBaseUrl,
+            WIDGET_API_KEY: widgetApiKey,
             SESSION_STORAGE_KEY: `spc_widget_session_id_${botId}`
         };
         
@@ -733,6 +735,7 @@
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
+                        'X-Widget-API-Key': CONFIG.WIDGET_API_KEY
                     },
                     body: JSON.stringify({
                         question: message,
@@ -903,6 +906,7 @@
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
+                        'X-Widget-API-Key': CONFIG.WIDGET_API_KEY
                     },
                     body: JSON.stringify({
                         name: name,

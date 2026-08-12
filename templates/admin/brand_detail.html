@@ -1,0 +1,187 @@
+{% extends "base.html" %}
+
+{% block title %}Brand Detail - ChatPulse{% endblock %}
+
+{% block body_class %}bg-background text-on-background min-h-screen font-body-md pb-xl{% endblock %}
+
+{% block content %}
+<!-- Contextual Header (Detail View, Nav Shell Suppressed) -->
+<header class="sticky top-0 z-40 bg-background/90 backdrop-blur-md px-margin-mobile md:px-margin-desktop py-4 flex items-center justify-between border-b border-surface-container-highest/50">
+<div class="flex items-center gap-md">
+<a href="/admin/dashboard" class="w-12 h-12 rounded-full flex items-center justify-center bg-surface text-primary clay-outer hover:scale-[1.02] active:scale-95 transition-all">
+<span class="material-symbols-outlined">arrow_back</span>
+</a>
+<div class="flex items-center gap-sm">
+<h1 class="font-headline-lg text-headline-lg text-primary">Acme Corp</h1>
+<span class="px-4 py-1.5 rounded-full bg-secondary-container text-on-secondary-container font-label-sm text-label-sm flex items-center gap-1 shadow-[inset_2px_2px_5px_rgba(0,0,0,0.05),inset_-2px_-2px_5px_rgba(255,255,255,0.5)]">
+<span class="material-symbols-outlined text-[16px] text-secondary">check_circle</span> Active
+</span>
+</div>
+</div>
+</header>
+<main class="px-margin-mobile md:px-margin-desktop py-md max-w-[1400px] mx-auto flex flex-col gap-lg">
+<!-- Tabs Navigation -->
+<nav class="overflow-x-auto hide-scrollbar py-2 -mx-2 px-2">
+<ul class="flex gap-sm w-max" id="tabList">
+<li>
+<button class="tab-btn px-6 py-3 rounded-full bg-primary-container text-on-primary-container font-label-sm text-label-sm clay-inset transition-all" data-target="tab-overview">Overview</button>
+</li>
+<li>
+<button class="tab-btn px-6 py-3 rounded-full bg-surface text-on-surface-variant font-label-sm text-label-sm clay-outer hover:scale-[1.02] active:scale-95 transition-all" data-target="tab-config">Configuration</button>
+</li>
+<li>
+<button class="tab-btn px-6 py-3 rounded-full bg-surface text-on-surface-variant font-label-sm text-label-sm clay-outer hover:scale-[1.02] active:scale-95 transition-all" data-target="tab-leads">Leads</button>
+</li>
+<li>
+<button class="tab-btn px-6 py-3 rounded-full bg-surface text-on-surface-variant font-label-sm text-label-sm clay-outer hover:scale-[1.02] active:scale-95 transition-all" data-target="tab-billing">Billing</button>
+</li>
+<li>
+<button class="tab-btn px-6 py-3 rounded-full bg-surface text-error font-label-sm text-label-sm clay-outer hover:scale-[1.02] active:scale-95 transition-all" data-target="tab-danger">Danger zone</button>
+</li>
+</ul>
+</nav>
+<!-- Tab Content: Overview -->
+<section class="tab-content flex flex-col gap-lg" id="tab-overview">
+<!-- Stats Grid -->
+<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-md">
+<!-- Messages -->
+<div class="bg-surface rounded-xl p-6 clay-outer flex flex-col gap-2">
+<div class="flex items-center gap-2 text-primary">
+<span class="material-symbols-outlined text-[24px]">forum</span>
+<h3 class="font-label-sm text-label-sm text-on-surface-variant">Messages Processed</h3>
+</div>
+<p class="font-headline-xl text-headline-xl text-on-surface">14,289</p>
+<p class="font-body-md text-body-md text-sm text-secondary flex items-center gap-1"><span class="material-symbols-outlined text-[16px]">trending_up</span> +12% this month</p>
+</div>
+<!-- Leads -->
+<div class="bg-surface rounded-xl p-6 clay-outer flex flex-col gap-2">
+<div class="flex items-center gap-2 text-primary">
+<span class="material-symbols-outlined text-[24px]">person_add</span>
+<h3 class="font-label-sm text-label-sm text-on-surface-variant">Leads Generated</h3>
+</div>
+<p class="font-headline-xl text-headline-xl text-on-surface">842</p>
+<p class="font-body-md text-body-md text-sm text-secondary flex items-center gap-1"><span class="material-symbols-outlined text-[16px]">trending_up</span> +5% this month</p>
+</div>
+<!-- Tier -->
+<div class="bg-surface rounded-xl p-6 clay-outer flex flex-col gap-2 justify-between">
+<div>
+<div class="flex items-center gap-2 text-primary mb-2">
+<span class="material-symbols-outlined text-[24px]">workspace_premium</span>
+<h3 class="font-label-sm text-label-sm text-on-surface-variant">Current Tier</h3>
+</div>
+<p class="font-headline-md text-headline-md text-on-surface">Pro Plan</p>
+</div>
+<button class="w-max px-4 py-1.5 rounded-full bg-primary text-on-primary font-label-sm text-label-sm clay-outer hover:scale-[1.02] active:scale-95 transition-all text-xs">Upgrade</button>
+</div>
+<!-- Next Billing -->
+<div class="bg-surface rounded-xl p-6 clay-outer flex flex-col gap-2">
+<div class="flex items-center gap-2 text-primary">
+<span class="material-symbols-outlined text-[24px]">event</span>
+<h3 class="font-label-sm text-label-sm text-on-surface-variant">Next Billing</h3>
+</div>
+<p class="font-headline-md text-headline-md text-on-surface mt-1">Oct 15, 2023</p>
+<p class="font-body-md text-body-md text-sm text-on-surface-variant opacity-70">$49.00 USD</p>
+</div>
+</div>
+<!-- Embed Snippet Card -->
+<div class="bg-surface rounded-xl p-lg clay-outer relative overflow-hidden">
+<div class="absolute top-0 right-0 w-64 h-64 bg-primary-container rounded-full blur-[80px] opacity-20 -mr-20 -mt-20 pointer-events-none"></div>
+<h2 class="font-headline-md text-headline-md text-primary mb-4 flex items-center gap-2"><span class="material-symbols-outlined">code</span> Embed Snippet</h2>
+<p class="font-body-md text-body-md text-on-surface-variant mb-6 max-w-2xl">Copy and paste this snippet into the <code>&lt;head&gt;</code> tag of your website to activate the ChatPulse widget for this brand.</p>
+<div class="bg-surface-container rounded-lg p-6 font-mono text-sm text-on-surface shadow-[inset_4px_4px_8px_rgba(0,0,0,0.05),inset_-4px_-4px_8px_rgba(255,255,255,0.8)] relative group overflow-x-auto">
+<pre><code>&lt;!-- ChatPulse Widget --&gt;
+&lt;script src="https://cdn.chatpulse.com/widget/v2/loader.js" 
+        data-brand-id="acme-corp-prod-9a8b7c" 
+        data-theme="light" 
+        async&gt;&lt;/script&gt;
+&lt;!-- End ChatPulse Widget --&gt;</code></pre>
+<button class="absolute top-4 right-4 px-4 py-2 rounded-full bg-primary text-on-primary font-label-sm text-label-sm flex items-center gap-2 clay-outer hover:scale-[1.05] active:scale-95 transition-all opacity-0 group-hover:opacity-100 focus:opacity-100">
+<span class="material-symbols-outlined text-[18px]">content_copy</span> Copy
+</button>
+</div>
+</div>
+</section>
+<!-- Tab Content: Danger Zone -->
+<section class="tab-content hidden flex flex-col gap-lg" id="tab-danger">
+<div class="bg-[#fcf3f3] text-on-error-container rounded-xl p-lg clay-error-outer border border-error-container relative overflow-hidden">
+<div class="absolute top-0 right-0 w-64 h-64 bg-error-container rounded-full blur-[80px] opacity-40 -mr-20 -mt-20 pointer-events-none"></div>
+<h2 class="font-headline-md text-headline-md flex items-center gap-2 mb-2"><span class="material-symbols-outlined">warning</span> Danger Zone</h2>
+<p class="font-body-md text-body-md mb-8 opacity-80 max-w-2xl">These actions are destructive and affect the live environment immediately. Please proceed with extreme caution.</p>
+<div class="flex flex-col gap-md max-w-3xl">
+<!-- Suspend -->
+<div class="flex flex-col sm:flex-row sm:items-center justify-between bg-surface/60 backdrop-blur-sm p-6 rounded-lg shadow-[inset_2px_2px_4px_rgba(0,0,0,0.02),inset_-2px_-2px_4px_rgba(255,255,255,0.6)] gap-4">
+<div>
+<h3 class="font-label-sm text-label-sm font-bold text-on-surface">Suspend Brand</h3>
+<p class="font-body-md text-body-md text-sm text-on-surface-variant mt-1">Temporarily halt all bot activity. The widget will not load on client sites.</p>
+</div>
+<button class="shrink-0 px-6 py-3 rounded-full bg-tertiary-container text-on-tertiary-container font-label-sm text-label-sm clay-outer hover:scale-[1.02] active:scale-95 transition-all">Suspend this brand</button>
+</div>
+<!-- Delete -->
+<div class="flex flex-col gap-6 bg-surface/60 backdrop-blur-sm p-6 rounded-lg shadow-[inset_2px_2px_4px_rgba(0,0,0,0.02),inset_-2px_-2px_4px_rgba(255,255,255,0.6)]">
+<div>
+<h3 class="font-label-sm text-label-sm font-bold text-error">Delete Brand Permanently</h3>
+<p class="font-body-md text-body-md text-sm text-on-surface-variant mt-1">Permanently remove this brand, all its configuration, and historical lead data. This cannot be undone.</p>
+</div>
+<div class="flex flex-col gap-3">
+<label class="font-label-sm text-label-sm text-on-surface">Type <strong class="text-error select-all bg-error-container/30 px-1 rounded">Acme Corp</strong> to confirm</label>
+<div class="flex flex-col sm:flex-row gap-4">
+<input class="flex-1 bg-surface rounded-full px-6 py-3 font-body-md text-body-md text-on-surface border-none shadow-[inset_4px_4px_8px_rgba(0,0,0,0.08),inset_-4px_-4px_8px_rgba(255,255,255,0.9)] focus:ring-2 focus:ring-error outline-none transition-shadow placeholder:text-outline-variant" id="deleteConfirmInput" placeholder="Acme Corp" type="text"/>
+<button class="shrink-0 px-6 py-3 rounded-full bg-surface-variant text-outline font-label-sm text-label-sm shadow-[inset_2px_2px_4px_rgba(0,0,0,0.1)] cursor-not-allowed transition-all" disabled="" id="deleteBtn">Delete this brand</button>
+</div>
+</div>
+</div>
+</div>
+</div>
+</section>
+<!-- Placeholders for other tabs -->
+<section class="tab-content hidden" id="tab-config"><div class="p-xl text-center text-on-surface-variant clay-inset rounded-xl bg-surface">Configuration settings coming soon...</div></section>
+<section class="tab-content hidden" id="tab-leads"><div class="p-xl text-center text-on-surface-variant clay-inset rounded-xl bg-surface">Lead management coming soon...</div></section>
+<section class="tab-content hidden" id="tab-billing"><div class="p-xl text-center text-on-surface-variant clay-inset rounded-xl bg-surface">Billing history coming soon...</div></section>
+</main>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    // Tab Switching Logic
+    const tabs = document.querySelectorAll('.tab-btn');
+    const contents = document.querySelectorAll('.tab-content');
+
+    tabs.forEach(tab => {
+        tab.addEventListener('click', () => {
+            // Reset all tabs
+            tabs.forEach(t => {
+                t.className = 'tab-btn px-6 py-3 rounded-full bg-surface text-on-surface-variant font-label-sm text-label-sm clay-outer hover:scale-[1.02] active:scale-95 transition-all';
+                if(t.dataset.target === 'tab-danger') {
+                        t.classList.add('text-error');
+                }
+            });
+            // Reset all contents
+            contents.forEach(c => c.classList.add('hidden'));
+
+            // Set active tab
+            tab.className = 'tab-btn px-6 py-3 rounded-full bg-primary-container text-on-primary-container font-label-sm text-label-sm clay-inset transition-all';
+            
+            // Show active content
+            const targetId = tab.getAttribute('data-target');
+            document.getElementById(targetId).classList.remove('hidden');
+        });
+    });
+
+    // Delete Confirmation Logic
+    const deleteInput = document.getElementById('deleteConfirmInput');
+    const deleteBtn = document.getElementById('deleteBtn');
+    const targetName = "Acme Corp";
+
+    if (deleteInput) {
+        deleteInput.addEventListener('input', (e) => {
+            if(e.target.value === targetName) {
+                deleteBtn.disabled = false;
+                deleteBtn.className = 'shrink-0 px-6 py-3 rounded-full bg-error text-on-error font-label-sm text-label-sm clay-outer hover:scale-[1.02] active:scale-95 transition-all cursor-pointer';
+            } else {
+                deleteBtn.disabled = true;
+                deleteBtn.className = 'shrink-0 px-6 py-3 rounded-full bg-surface-variant text-outline font-label-sm text-label-sm shadow-[inset_2px_2px_4px_rgba(0,0,0,0.1)] cursor-not-allowed transition-all';
+            }
+        });
+    }
+</script>
+{% endblock %}
