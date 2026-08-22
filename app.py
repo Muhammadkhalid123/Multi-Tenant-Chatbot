@@ -1,5 +1,5 @@
 import sys
-sys.stdout.reconfigure(encoding='utf-8')
+sys.stdout.reconfigure(encoding='utf-8', line_buffering=True)
 from flask import Flask, request, jsonify, send_from_directory, session, redirect, url_for, render_template_string, render_template
 from flask_cors import CORS
 from flask_limiter import Limiter
@@ -8,6 +8,7 @@ from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_ollama import OllamaLLM
 from langchain_openai import ChatOpenAI
 from langchain_core.prompts import PromptTemplate
+from prompt_templates import build_system_prompt, extract_interests_from_message, TEMPLATES
 import re
 import json
 import os
@@ -40,7 +41,7 @@ load_dotenv()
 
 # MongoDB Database Connection
 MONGO_URI = os.getenv("MONGO_URI", "mongodb://localhost:27017/chatbot")
-mongo_client = MongoClient(MONGO_URI)
+mongo_client = MongoClient(MONGO_URI, serverSelectionTimeoutMS=5000)
 db = mongo_client.get_default_database()
 
 app = Flask(__name__)
@@ -220,26 +221,34 @@ def load_bot_config(bot_id):
         
     try:
         row = db.tenants.find_one({"bot_id": bot_id})
+        if not row:
+            row = db.bot_configs.find_one({"bot_id": bot_id})
         if row:
             # Remove MongoDB internal ObjectId
             row.pop("_id", None)
+            # Compose system prompt dynamically from brand type template if not an explicit override
+            row["system_prompt"] = build_system_prompt(row)
             _config_cache[bot_id] = row
             return row
     except Exception as e:
         print(f"[ERROR] Failed to load config from database for {bot_id}: {e}")
             
     # Fall back to default config values if not in DB
-    return _default_config(bot_id)
+    cfg = _default_config(bot_id)
+    cfg["system_prompt"] = build_system_prompt(cfg)
+    return cfg
 
 def _default_config(bot_id):
     return {
         "bot_id": bot_id,
         "brand_name": bot_id.replace("_", " ").title(),
+        "brand_type": "ebook",
+        "brand_facts": "",
         "welcome_message": f"Hello! Welcome to {bot_id.replace('_', ' ').title()} Chat Assistant. How can I help you today?",
         "primary_color": "#d97706",
         "primary_light_color": "#fbbf24",
         "webhook_url": None,
-        "system_prompt": "You are a helpful assistant. Answer the user's questions clearly and concisely.\n\nContext: {context}\n\nPrevious conversation: {history}\n\nQuestion: {question}\n\nJSON Response:"
+        "system_prompt": None
     }
 
 # -------------------------
@@ -320,38 +329,6 @@ def detect_intent(question, history=""):
     
     return "general"
 
-
-
-def extract_interests_from_message(question):
-    """
-    Extract mentioned services/packages from a user message to track their interests.
-    Returns a set of interest strings.
-    """
-    interests = set()
-    q_lower = question.lower()
-
-    service_keywords = {
-        "Manuscript Assessment": ["manuscript assessment", "assess my manuscript", "manuscript review"],
-        "Developmental Editing": ["developmental editing", "developmental edit", "editing"],
-        "Cover Design": ["cover design", "book cover", "cover"],
-        "Interior Formatting": ["formatting", "interior format", "kdp format", "ebook format"],
-        "Global Distribution": ["distribution", "global distribution", "distribute"],
-        "Book Marketing": ["marketing", "book marketing", "launch strategy", "advertis"],
-        "Royalty Accounting": ["royalty", "royalties", "royalty tracking", "royalty accounting"],
-        "Ghostwriting": ["ghostwriting", "ghost writing", "ghostwrite"],
-        "Copyright Registration": ["copyright", "copyright registration", "rights protection"],
-        "Metadata & SEO": ["metadata", "seo", "discoverability"],
-        "Audiobook Production": ["audiobook", "audio book", "audio production"],
-        "Video Trailer": ["video trailer", "book trailer"],
-        "Proofreading": ["proofreading", "proofread", "copyediting"],
-    }
-
-    for service, keywords in service_keywords.items():
-        if any(kw in q_lower for kw in keywords):
-            interests.add(service)
-
-    return interests
-
 # -------------------------
 # Webhook Helper
 # -------------------------
@@ -428,7 +405,7 @@ def send_to_webhook(name, email, phone, webhook_url):
 # -------------------------
 @app.route("/")
 def index():
-    return redirect(url_for("admin_login", bot_id="tecwrites"))
+    return redirect(url_for("saas_admin_dashboard"))
 
 def parse_llm_json_response(llm_output):
     """
@@ -463,10 +440,33 @@ def parse_llm_json_response(llm_output):
         
     return llm_output, False, None
 
+def safe_format_prompt(template_str, context, history, question, name_context=""):
+    """
+    Safely formats a system prompt template without crashing on unescaped JSON braces.
+    """
+    if not template_str:
+        template_str = "You are a helpful assistant.\n\nContext: {context}\n\nPrevious conversation: {history}\n\nQuestion: {question}\n\nJSON Response:"
+    
+    full_context = (name_context + context).strip()
+    
+    try:
+        pt = PromptTemplate(
+            input_variables=["context", "history", "question"],
+            template=template_str
+        )
+        return pt.format(context=full_context, history=history, question=question)
+    except Exception:
+        # Fallback to direct placeholder replacement if template contains unescaped single braces
+        res = template_str
+        res = res.replace("{context}", full_context)
+        res = res.replace("{history}", history)
+        res = res.replace("{question}", question)
+        return res
+
 @app.route("/ask", methods=["POST"])
 @limiter.limit("30/minute")
 def ask():
-    data = request.get_json()
+    data = request.get_json() or {}
     question = data.get("question", "").strip()
     session_id = data.get("session_id", "default")
     bot_id = data.get("bot_id", "self_publishing").strip()
@@ -478,28 +478,30 @@ def ask():
     # Load brand config
     config = load_bot_config(bot_id)
     
-    # Phase 4: Validate Widget API Key
-    incoming_key = request.headers.get("X-Widget-API-Key")
-    if not incoming_key or incoming_key != config.get("widget_api_key"):
+    # Validate Widget API Key if present
+    incoming_key = request.headers.get("X-Widget-API-Key") or request.args.get("widget_api_key") or request.args.get("api_key") or data.get("api_key")
+    configured_key = config.get("widget_api_key")
+    if configured_key and incoming_key and incoming_key != configured_key:
         return jsonify({"error": "Unauthorized"}), 401
         
-    # Phase 3: Check if tenant is suspended before making LLM calls
-    if config.get("status") != "active":
+    # Check if tenant is suspended before making LLM calls
+    if config.get("status") == "suspended" or config.get("is_active") is False:
         return jsonify({
             "reply": "This service is temporarily paused.",
+            "answer": "This service is temporarily paused.",
             "lead_required": False,
             "extracted_name": None
         })
 
-    # Track service interests from this message
-    new_interests = extract_interests_from_message(question)
+    # Track service interests from this message based on brand type
+    new_interests = extract_interests_from_message(question, brand_type=config.get("brand_type", "ebook"))
     session_interests[skey].update(new_interests)
 
     # Get session history
     session_history = chat_sessions[skey]
     
     # Simple history text (last 3 exchanges only)
-    history_text = "\\n".join([f"User: {msg['user']}\\nBot: {msg['bot']}" 
+    history_text = "\n".join([f"User: {msg['user']}\nBot: {msg['bot']}" 
                               for msg in session_history[-3:]])
     
     # Get context from Atlas Vector Search
@@ -510,19 +512,30 @@ def ask():
     except Exception as e:
         print(f"[ERROR] Retrieval failed for {bot_id}: {e}")
     
+    # Check for direct name response if we were awaiting a name
+    is_awaiting_name = skey in user_names and user_names[skey] == "__awaiting__"
+    if is_awaiting_name:
+        name_match = re.search(r'(?:my name is|i am|i\'m|this is|call me)\s+([A-Za-z]+)', question, re.IGNORECASE)
+        if name_match:
+            user_names[skey] = name_match.group(1).capitalize()
+        else:
+            words = question.strip().split()
+            if 1 <= len(words) <= 2 and words[0].isalpha():
+                user_names[skey] = words[0].capitalize()
+            else:
+                user_names[skey] = ""
+
     # Inject the user's known name into the history context
     known_name = user_names.get(skey, "")
     name_context = f"The user's name is {known_name}. Use their name naturally in your replies.\n" if known_name and known_name != "__awaiting__" else ""
 
-    # Build prompt dynamically using config prompt template
-    prompt_template = PromptTemplate(
-        input_variables=["context", "history", "question"],
-        template=config.get("system_prompt")
-    )
-    prompt = prompt_template.format(
-        context=name_context + context,
+    # Build prompt dynamically using config prompt template safely
+    prompt = safe_format_prompt(
+        config.get("system_prompt"),
+        context=context,
         history=history_text,
-        question=question
+        question=question,
+        name_context=name_context
     )
     
     lead_required = False
@@ -536,20 +549,17 @@ def ask():
         # Parse JSON response
         answer_text, lead_required, extracted_name = parse_llm_json_response(raw_answer)
         
-        is_awaiting_name = skey in user_names and user_names[skey] == "__awaiting__"
         if extracted_name:
             user_names[skey] = extracted_name
-        elif is_awaiting_name:
-            user_names[skey] = ""
         
     except Exception as e:
         print(f"[ERROR] LLM Invocation failed: {e}")
         import traceback
         traceback.print_exc()
-        answer_text = f"I'm here to help with your {config.get('brand_name')} questions. How can I help you?"
+        answer_text = f"I'm here to help with your {config.get('brand_name')} questions. How can I help you today?"
         lead_required = False
     
-    # After very first exchange: ask for user's name
+    # After very first exchange only: if name is completely unknown, ask for user's name politely
     is_first_message = len(session_history) == 0
     if is_first_message and skey not in user_names:
         user_names[skey] = "__awaiting__"
@@ -568,6 +578,7 @@ def ask():
     return jsonify({
         "lead_required": lead_required,
         "answer": answer_text,
+        "reply": answer_text,
         "session_id": session_id
     })
 
@@ -706,657 +717,8 @@ Do not include any explanation, markdown wrappers (like ```json), or text outsid
 
 
 # -------------------------
-# Admin Dashboard HTML Templates
+# Admin Dashboard (Claymorphism SaaS UI)
 # -------------------------
-ADMIN_LOGIN_HTML = """<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Admin Login - Self Publishing Consultant</title>
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Lora:ital,wght@0,400..700;1,400..700&family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
-    <style>
-        :root {
-            --bg-page: #0b0f19;
-            --bg-surface: rgba(15, 23, 42, 0.7);
-            --bg-card: rgba(30, 41, 59, 0.4);
-            --border: rgba(255, 255, 255, 0.08);
-            --border-glow: rgba(217, 119, 6, 0.3);
-            --text-main: #f8fafc;
-            --text-muted: #94a3b8;
-            --primary: #d97706;
-            --primary-light: #fbbf24;
-            --error: #ef4444;
-            --font-serif: 'Lora', serif;
-            --font-sans: 'Plus Jakarta Sans', sans-serif;
-            --transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-        }
-        * { box-sizing: border-box; margin: 0; padding: 0; }
-        body {
-            font-family: var(--font-sans);
-            background: radial-gradient(circle at top right, #1e1b4b, var(--bg-page) 65%);
-            color: var(--text-main);
-            min-height: 100vh;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            padding: 20px;
-        }
-        .card {
-            background: var(--bg-surface);
-            backdrop-filter: blur(20px);
-            border: 1px solid var(--border);
-            border-radius: 20px;
-            padding: 40px;
-            width: 100%;
-            max-width: 400px;
-            box-shadow: 0 20px 40px rgba(0,0,0,0.5);
-            text-align: center;
-        }
-        h1 { font-family: var(--font-serif); font-size: 22px; color: var(--primary-light); margin-bottom: 8px; }
-        p { font-size: 13px; color: var(--text-muted); margin-bottom: 24px; }
-        .input-group { margin-bottom: 20px; text-align: left; }
-        label { display: block; font-size: 11px; text-transform: uppercase; letter-spacing: 1px; color: var(--text-muted); margin-bottom: 6px; font-weight: 600; }
-        input {
-            width: 100%;
-            padding: 12px 16px;
-            background: rgba(15, 23, 42, 0.8);
-            border: 1px solid var(--border);
-            border-radius: 10px;
-            color: var(--text-main);
-            font-size: 14px;
-            outline: none;
-            transition: var(--transition);
-        }
-        input:focus { border-color: var(--primary); box-shadow: 0 0 10px rgba(217, 119, 6, 0.15); }
-        .btn {
-            width: 100%;
-            padding: 12px;
-            background: linear-gradient(135deg, var(--primary) 0%, #b45309 100%);
-            border: none;
-            color: white;
-            font-weight: 600;
-            font-size: 14px;
-            border-radius: 10px;
-            cursor: pointer;
-            transition: var(--transition);
-            margin-top: 10px;
-        }
-        .btn:hover { transform: translateY(-1px); box-shadow: 0 4px 12px rgba(217, 119, 6, 0.3); }
-        .error-msg { color: var(--error); font-size: 12px; margin-top: 12px; line-height: 1.4; }
-    </style>
-</head>
-<body>
-    <div class="card">
-        <h1>Dashboard Login</h1>
-        <p>Access the Self Publishing Consultant Lead Portal</p>
-        <form method="POST">
-            <div class="input-group">
-                <label>Username</label>
-                <input type="text" name="username" placeholder="Enter administrative username" required autofocus>
-            </div>
-            <div class="input-group">
-                <label>Password</label>
-                <input type="password" name="password" placeholder="Enter administrative password" required>
-            </div>
-            <button type="submit" class="btn">Authenticate</button>
-            {% if error %}
-            <div class="error-msg">{{ error }}</div>
-            {% endif %}
-        </form>
-    </div>
-</body>
-</html>"""
-
-# -------------------------
-# Super Admin Dashboard HTML Templates
-# -------------------------
-SUPER_ADMIN_LOGIN_HTML = '''<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Super Admin Login</title>
-    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;700&display=swap" rel="stylesheet">
-    <style>
-        :root { --bg: #0f172a; --card: #1e293b; --primary: #3b82f6; --text: #f8fafc; }
-        body { font-family: 'Plus Jakarta Sans', sans-serif; background: var(--bg); color: var(--text); display: flex; justify-content: center; align-items: center; min-height: 100vh; margin: 0; }
-        .card { background: var(--card); padding: 40px; border-radius: 12px; box-shadow: 0 10px 25px rgba(0,0,0,0.5); width: 100%; max-width: 400px; text-align: center; }
-        input { width: 100%; padding: 12px; margin-bottom: 20px; border-radius: 8px; border: 1px solid #334155; background: #0f172a; color: white; box-sizing: border-box; }
-        button { width: 100%; padding: 12px; border-radius: 8px; border: none; background: var(--primary); color: white; font-weight: bold; cursor: pointer; }
-        button:hover { background: #2563eb; }
-        .error { color: #ef4444; font-size: 14px; margin-top: 10px; }
-    </style>
-</head>
-<body>
-    <div class="card">
-        <h2>Master Dashboard</h2>
-        <p style="color:#94a3b8; margin-bottom: 30px;">Login to manage all brands</p>
-        <form method="POST">
-            <input type="text" name="username" placeholder="Username" required autofocus>
-            <input type="password" name="password" placeholder="Password" required>
-            <button type="submit">Login</button>
-            {% if error %}<div class="error">{{ error }}</div>{% endif %}
-        </form>
-    </div>
-</body>
-</html>'''
-
-SUPER_ADMIN_LAYOUT = '''<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <title>SaaS Master Dashboard</title>
-    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;700&display=swap" rel="stylesheet">
-    <style>
-        :root { --bg: #0f172a; --card: #1e293b; --primary: #3b82f6; --text: #f8fafc; --muted: #94a3b8; --border: #334155; }
-        body { font-family: 'Plus Jakarta Sans', sans-serif; background: var(--bg); color: var(--text); margin: 0; display: flex; min-height: 100vh; }
-        .sidebar { width: 250px; background: var(--card); border-right: 1px solid var(--border); padding: 20px; display: flex; flex-direction: column; }
-        .sidebar h2 { font-size: 18px; margin-bottom: 30px; color: white; }
-        .nav-link { padding: 12px 16px; color: var(--muted); text-decoration: none; border-radius: 8px; margin-bottom: 8px; font-weight: 600; }
-        .nav-link:hover, .nav-link.active { background: rgba(59, 130, 246, 0.1); color: var(--primary); }
-        .content { flex: 1; padding: 40px; overflow-y: auto; }
-        h1 { margin-top: 0; }
-        table { width: 100%; border-collapse: collapse; margin-top: 20px; background: var(--card); border-radius: 8px; overflow: hidden; }
-        th, td { padding: 16px; text-align: left; border-bottom: 1px solid var(--border); }
-        th { font-size: 12px; text-transform: uppercase; color: var(--muted); }
-        .badge { padding: 4px 8px; border-radius: 12px; font-size: 12px; font-weight: bold; }
-        .badge.active { background: rgba(34, 197, 94, 0.2); color: #4ade80; }
-        .badge.suspended { background: rgba(239, 68, 68, 0.2); color: #f87171; }
-        .btn { padding: 8px 16px; border-radius: 6px; border: none; cursor: pointer; font-weight: 600; text-decoration: none; display: inline-block; }
-        .btn-primary { background: var(--primary); color: white; }
-        .btn-danger { background: #ef4444; color: white; }
-        .btn-warning { background: #f59e0b; color: white; }
-        .modal { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.5); align-items: center; justify-content: center; z-index: 50; }
-        .modal.open { display: flex; }
-        .modal-content { background: var(--card); padding: 30px; border-radius: 12px; width: 400px; max-height: 90vh; overflow-y: auto;}
-        .form-group { margin-bottom: 15px; }
-        .form-group label { display: block; margin-bottom: 5px; font-size: 14px; color: var(--muted); }
-        .form-group input, .form-group textarea { width: 100%; padding: 10px; border-radius: 6px; border: 1px solid var(--border); background: var(--bg); color: white; box-sizing: border-box;}
-    </style>
-</head>
-<body>
-    <div class="sidebar">
-        <h2>🚀 SaaS Master</h2>
-        <a href="/superadmin/leads" class="nav-link {% if active_tab == 'leads' %}active{% endif %}">All Leads</a>
-        <a href="/superadmin/brands" class="nav-link {% if active_tab == 'brands' %}active{% endif %}">Manage Brands</a>
-        <div style="flex: 1;"></div>
-        <a href="/superadmin/logout" class="nav-link" style="color: #ef4444;">Log Out</a>
-    </div>
-    <div class="content">
-        <!-- CONTENT -->
-    </div>
-</body>
-</html>'''
-
-SUPER_ADMIN_LEADS_HTML = SUPER_ADMIN_LAYOUT + '''
-{% block content %}
-<h1>All Captured Leads</h1>
-<table>
-    <thead>
-        <tr>
-            <th>Date</th>
-            <th>Brand (Bot ID)</th>
-            <th>Name</th>
-            <th>Contact</th>
-            <th>Summary</th>
-        </tr>
-    </thead>
-    <tbody>
-        {% for chat in chats %}
-        <tr>
-            <td>{{ chat.started_at }}</td>
-            <td style="color: var(--primary); font-weight: bold;">{{ chat.bot_id }}</td>
-            <td>{{ chat.name }}</td>
-            <td>{{ chat.email }}<br>{{ chat.phone }}</td>
-            <td style="color: var(--muted); font-size: 14px;">{{ chat.summary }}</td>
-        </tr>
-        {% endfor %}
-    </tbody>
-</table>
-{% endblock %}
-'''
-
-SUPER_ADMIN_BRANDS_HTML = SUPER_ADMIN_LAYOUT + '''
-{% block content %}
-<div style="display: flex; justify-content: space-between; align-items: center;">
-    <h1>Managed Brands</h1>
-    <button class="btn btn-primary" onclick="document.getElementById('addModal').classList.add('open')">+ Add Brand</button>
-</div>
-<table>
-    <thead>
-        <tr>
-            <th>Bot ID</th>
-            <th>Brand Name</th>
-            <th>Status</th>
-            <th>Actions</th>
-        </tr>
-    </thead>
-    <tbody>
-        {% for brand in brands %}
-        <tr>
-            <td style="font-weight: bold;">{{ brand.bot_id }}</td>
-            <td>{{ brand.brand_name }}</td>
-            <td>
-                {% if brand.is_active != False %}
-                <span class="badge active">Active</span>
-                {% else %}
-                <span class="badge suspended">Suspended</span>
-                {% endif %}
-            </td>
-            <td style="display: flex; gap: 10px;">
-                <form action="/superadmin/brands/{{ brand.bot_id }}/toggle" method="POST" style="margin:0;">
-                    {% if brand.is_active != False %}
-                    <button class="btn btn-warning" type="submit">Suspend</button>
-                    {% else %}
-                    <button class="btn btn-primary" type="submit" style="background:#10b981;">Activate</button>
-                    {% endif %}
-                </form>
-                <form action="/superadmin/brands/{{ brand.bot_id }}/delete" method="POST" style="margin:0;" onsubmit="return confirm('Delete this brand permanently?');">
-                    <button class="btn btn-danger" type="submit">Delete</button>
-                </form>
-            </td>
-        </tr>
-        {% endfor %}
-    </tbody>
-</table>
-
-<div id="addModal" class="modal">
-    <div class="modal-content">
-        <h2 style="margin-top:0;">Add New Brand</h2>
-        <form action="/superadmin/brands/add" method="POST">
-            <div class="form-group">
-                <label>Bot ID (e.g. my_brand)</label>
-                <input type="text" name="bot_id" required>
-            </div>
-            <div class="form-group">
-                <label>Brand Name</label>
-                <input type="text" name="brand_name" required>
-            </div>
-            <div class="form-group">
-                <label>Admin Username</label>
-                <input type="text" name="admin_username" required>
-            </div>
-            <div class="form-group">
-                <label>Admin Password</label>
-                <input type="text" name="admin_password" required>
-            </div>
-            <div class="form-group">
-                <label>System Prompt</label>
-                <textarea name="system_prompt" rows="8" required>You are a helpful assistant for {brand_name}.
-
-IMPORTANT FORMAT INSTRUCTIONS: You MUST always respond with a valid JSON object containing exactly these three keys:
-1. "reply": (string) Your conversational response to the user.
-2. "lead_required": (boolean) true if you need to capture their contact info, false otherwise.
-3. "extracted_name": (string or null) the user's name if they provided it.
-
-Context: {context}
-Previous conversation: {history}
-Question: {question}
-JSON Response:</textarea>
-            </div>
-            <div style="display: flex; gap: 10px; margin-top: 20px;">
-                <button type="button" class="btn" style="background: var(--card); border: 1px solid var(--border); color: white;" onclick="document.getElementById('addModal').classList.remove('open')">Cancel</button>
-                <button type="submit" class="btn btn-primary" style="flex:1;">Create Brand</button>
-            </div>
-        </form>
-    </div>
-</div>
-{% endblock %}
-'''
-
-
-ADMIN_CHATS_HTML = """<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Lead Dashboard - Self Publishing Consultant</title>
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Lora:ital,wght@0,400..700;1,400..700&family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
-    <style>
-        :root {
-            --bg-page: #0b0f19;
-            --bg-surface: rgba(15, 23, 42, 0.7);
-            --bg-sidebar: #0f172a;
-            --bg-card: rgba(30, 41, 59, 0.4);
-            --bg-card-hover: rgba(30, 41, 59, 0.7);
-            --border: rgba(255, 255, 255, 0.08);
-            --border-glow: rgba(217, 119, 6, 0.3);
-            --text-main: #f8fafc;
-            --text-muted: #94a3b8;
-            --primary: #d97706;
-            --primary-light: #fbbf24;
-            --font-serif: 'Lora', serif;
-            --font-sans: 'Plus Jakarta Sans', sans-serif;
-            --transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-        }
-        * { box-sizing: border-box; margin: 0; padding: 0; }
-        body {
-            font-family: var(--font-sans);
-            background: radial-gradient(circle at top right, #1e1b4b, var(--bg-page) 65%);
-            color: var(--text-main);
-            min-height: 100vh;
-            padding: 40px 20px;
-        }
-        .container {
-            max-width: 1200px;
-            margin: 0 auto;
-            background: var(--bg-surface);
-            backdrop-filter: blur(20px);
-            border: 1px solid var(--border);
-            border-radius: 20px;
-            box-shadow: 0 20px 40px rgba(0,0,0,0.5);
-            overflow: hidden;
-        }
-        header {
-            padding: 24px 40px;
-            border-bottom: 1px solid var(--border);
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            background: rgba(15, 23, 42, 0.4);
-        }
-        h1 { font-family: var(--font-serif); font-size: 24px; color: var(--primary-light); }
-        .logout-btn {
-            background: transparent;
-            border: 1px solid var(--border);
-            color: var(--text-muted);
-            padding: 8px 16px;
-            border-radius: 8px;
-            cursor: pointer;
-            text-decoration: none;
-            font-size: 13px;
-            font-weight: 500;
-            transition: var(--transition);
-        }
-        .logout-btn:hover { border-color: var(--primary); color: var(--primary-light); background: rgba(217, 119, 6, 0.1); }
-        .table-container { padding: 30px; overflow-x: auto; }
-        table { width: 100%; border-collapse: collapse; text-align: left; }
-        th {
-            font-size: 11px;
-            text-transform: uppercase;
-            letter-spacing: 1.5px;
-            color: var(--text-muted);
-            padding: 12px 18px;
-            border-bottom: 1px solid var(--border);
-            font-weight: 700;
-        }
-        td { padding: 18px; border-bottom: 1px solid var(--border); font-size: 13.5px; vertical-align: top; }
-        tr:hover td { background: rgba(255,255,255,0.015); }
-        .chat-row { cursor: pointer; transition: var(--transition); }
-        .chat-row:hover { background: var(--bg-card-hover); }
-        .name { font-weight: 600; color: var(--text-main); }
-        .contact { font-size: 12.5px; color: var(--text-muted); line-height: 1.4; }
-        .services { display: flex; flex-wrap: wrap; gap: 4px; }
-        .badge {
-            background: rgba(217,119,6,0.1);
-            border: 1px solid rgba(217,119,6,0.25);
-            color: var(--primary-light);
-            border-radius: 12px;
-            padding: 2px 8px;
-            font-size: 11px;
-            font-weight: 600;
-        }
-        .summary { color: var(--text-muted); font-size: 13px; max-width: 320px; line-height: 1.4; }
-        .date { color: var(--text-muted); font-size: 12.5px; white-space: nowrap; }
-        .action-link {
-            color: var(--primary-light);
-            text-decoration: none;
-            font-weight: 600;
-            display: inline-flex;
-            align-items: center;
-            gap: 4px;
-            transition: var(--transition);
-        }
-        .action-link:hover { color: var(--primary); text-decoration: underline; }
-        .no-leads { text-align: center; padding: 60px; color: var(--text-muted); font-size: 15px; }
-    </style>
-</head>
-<body>
-    <div class="container">
-        <header>
-            <h1>Lead Dashboard — {{ selected_bot_id }}</h1>
-            <a href="/admin/{{ selected_bot_id }}/logout" class="logout-btn">Log Out</a>
-        </header>
-        <div class="table-container">
-            {% if chats %}
-            <table>
-                <thead>
-                    <tr>
-                        <th>Date & Time</th>
-                        <th>Chatbot ID</th>
-                        <th>Author Name</th>
-                        <th>Contact Details</th>
-                        <th>Requested Services</th>
-                        <th>Project Summary</th>
-                        <th>Actions</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {% for chat in chats %}
-                    <tr class="chat-row" onclick="window.location.href='/admin/{{ selected_bot_id }}/chats/{{ chat.id }}'">
-                        <td class="date">{{ chat.started_at }}</td>
-                        <td style="color: var(--primary-light); font-weight: 600;">{{ chat.bot_id if chat.bot_id else 'General' }}</td>
-                        <td class="name">{{ chat.name }}</td>
-                        <td class="contact">
-                            <div>📧 {{ chat.email }}</div>
-                            {% if chat.phone %}<div>📞 {{ chat.phone }}</div>{% endif %}
-                        </td>
-                        <td class="services">
-                            {% if chat.interested_services %}
-                                {% for svc in chat.interested_services.split(',') %}
-                                    <span class="badge">{{ svc.strip() }}</span>
-                                {% endfor %}
-                            {% else %}
-                                <span class="badge" style="background:rgba(255,255,255,0.05);border-color:transparent;color:var(--text-muted);">General</span>
-                            {% endif %}
-                        </td>
-                        <td class="summary">{{ chat.summary }}</td>
-                        <td><a href="/admin/{{ selected_bot_id }}/chats/{{ chat.id }}" class="action-link">View Details →</a></td>
-                    </tr>
-                    {% endfor %}
-                </tbody>
-            </table>
-            {% else %}
-            <div class="no-leads">No leads captured yet. Keep testing!</div>
-            {% endif %}
-        </div>
-    </div>
-</body>
-</html>"""
-
-ADMIN_DETAIL_HTML = """<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Lead Details - Self Publishing Consultant</title>
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Lora:ital,wght@0,400..700;1,400..700&family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
-    <style>
-        :root {
-            --bg-page: #0b0f19;
-            --bg-surface: rgba(15, 23, 42, 0.7);
-            --bg-sidebar: #0f172a;
-            --bg-card: rgba(30, 41, 59, 0.4);
-            --bg-card-hover: rgba(30, 41, 59, 0.7);
-            --border: rgba(255, 255, 255, 0.08);
-            --border-glow: rgba(217, 119, 6, 0.3);
-            --text-main: #f8fafc;
-            --text-muted: #94a3b8;
-            --primary: #d97706;
-            --primary-light: #fbbf24;
-            --font-serif: 'Lora', serif;
-            --font-sans: 'Plus Jakarta Sans', sans-serif;
-            --transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-        }
-        * { box-sizing: border-box; margin: 0; padding: 0; }
-        body {
-            font-family: var(--font-sans);
-            background: radial-gradient(circle at top right, #1e1b4b, var(--bg-page) 65%);
-            color: var(--text-main);
-            min-height: 100vh;
-            padding: 40px 20px;
-        }
-        .container {
-            max-width: 1200px;
-            margin: 0 auto;
-        }
-        .back-link {
-            color: var(--text-muted);
-            text-decoration: none;
-            display: inline-flex;
-            align-items: center;
-            gap: 8px;
-            font-size: 14px;
-            font-weight: 500;
-            margin-bottom: 24px;
-            transition: var(--transition);
-        }
-        .back-link:hover { color: var(--primary-light); }
-        .grid {
-            display: grid;
-            grid-template-columns: 420px 1fr;
-            gap: 30px;
-        }
-        .card {
-            background: var(--bg-surface);
-            backdrop-filter: blur(20px);
-            border: 1px solid var(--border);
-            border-radius: 20px;
-            padding: 30px;
-            box-shadow: 0 20px 40px rgba(0,0,0,0.5);
-            display: flex;
-            flex-direction: column;
-            gap: 20px;
-        }
-        .card h2 { font-family: var(--font-serif); font-size: 22px; color: var(--primary-light); border-bottom: 1px solid var(--border); padding-bottom: 10px; }
-        .field { display: flex; flex-direction: column; gap: 4px; }
-        .field-label { font-size: 10px; text-transform: uppercase; letter-spacing: 1px; color: var(--text-muted); font-weight: 700; }
-        .field-value { font-size: 14px; color: var(--text-main); line-height: 1.4; }
-        .services { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px; }
-        .badge {
-            background: rgba(217,119,6,0.1);
-            border: 1px solid rgba(217,119,6,0.25);
-            color: var(--primary-light);
-            border-radius: 12px;
-            padding: 2px 8px;
-            font-size: 11px;
-            font-weight: 600;
-        }
-        .chat-feed {
-            background: var(--bg-surface);
-            backdrop-filter: blur(20px);
-            border: 1px solid var(--border);
-            border-radius: 20px;
-            padding: 30px;
-            box-shadow: 0 20px 40px rgba(0,0,0,0.5);
-            display: flex;
-            flex-direction: column;
-            gap: 20px;
-            max-height: 700px;
-            overflow-y: auto;
-        }
-        .chat-feed h2 { font-family: var(--font-serif); font-size: 20px; color: var(--primary-light); margin-bottom: 10px; }
-        .message { display: flex; flex-direction: column; gap: 6px; max-width: 80%; padding: 12px 16px; border-radius: 14px; font-size: 13.5px; line-height: 1.5; }
-        .message.user {
-            align-self: flex-end;
-            background: linear-gradient(135deg, var(--primary) 0%, #b45309 100%);
-            color: white;
-            border-bottom-right-radius: 2px;
-        }
-        .message.bot {
-            align-self: flex-start;
-            background: rgba(30, 41, 59, 0.6);
-            border: 1px solid var(--border);
-            color: var(--text-main);
-            border-bottom-left-radius: 2px;
-        }
-        .message-sender { font-size: 10px; font-weight: 700; text-transform: uppercase; opacity: 0.8; letter-spacing: 0.5px; }
-        .message-text { word-wrap: break-word; }
-        @media (max-width: 900px) {
-            .grid { grid-template-columns: 1fr; }
-        }
-    </style>
-</head>
-<body>
-    <div class="container">
-        <a href="/admin/{{ chat.bot_id }}/chats" class="back-link">← Back to Lead Dashboard</a>
-        <div class="grid">
-            <!-- Left Panel: Extracted Details -->
-            <div class="card">
-                <h2>Lead Details</h2>
-                <div class="field">
-                    <div class="field-label">Date Captured</div>
-                    <div class="field-value">{{ chat.started_at }}</div>
-                </div>
-                <div class="field">
-                    <div class="field-label">Chatbot Brand ID</div>
-                    <div class="field-value" style="color: var(--primary-light); font-weight:600;">{{ chat.bot_id if chat.bot_id else 'General' }}</div>
-                </div>
-                <div class="field">
-                    <div class="field-label">Author Name</div>
-                    <div class="field-value" style="font-size: 16px; font-weight:600; color: var(--primary-light);">{{ chat.name }}</div>
-                </div>
-                <div class="field">
-                    <div class="field-label">Email Address</div>
-                    <div class="field-value">{{ chat.email }}</div>
-                </div>
-                {% if chat.phone %}
-                <div class="field">
-                    <div class="field-label">Phone Number</div>
-                    <div class="field-value">{{ chat.phone }}</div>
-                </div>
-                {% endif %}
-                <div class="field">
-                    <div class="field-label">Interested Services</div>
-                    <div class="services">
-                        {% if chat.interested_services %}
-                            {% for svc in chat.interested_services.split(',') %}
-                                <span class="badge">{{ svc.strip() }}</span>
-                            {% endfor %}
-                        {% else %}
-                            <span class="badge" style="background:rgba(255,255,255,0.05);border-color:transparent;color:var(--text-muted);">General</span>
-                        {% endif %}
-                    </div>
-                </div>
-                <div class="field">
-                    <div class="field-label">Project Summary</div>
-                    <div class="field-value" style="font-style: italic; color: var(--text-muted); border-left: 2px solid var(--primary); padding-left: 10px;">{{ chat.summary }}</div>
-                </div>
-            </div>
-
-            <!-- Right Panel: Full Conversation Transcript -->
-            <div class="chat-feed">
-                <h2>Conversation Transcript</h2>
-                {% if transcript_list %}
-                    {% for msg in transcript_list %}
-                        {% if msg.sender.lower() == 'user' %}
-                            <div class="message user">
-                                <div class="message-sender">Author</div>
-                                <div class="message-text">{{ msg.text }}</div>
-                            </div>
-                        {% else %}
-                            <div class="message bot">
-                                <div class="message-sender">Assistant</div>
-                                <div class="message-text">{{ msg.text }}</div>
-                            </div>
-                        {% endif %}
-                    {% endfor %}
-                {% else %}
-                    <div style="color:var(--text-muted); font-size: 14px;">No conversation logs found.</div>
-                {% endif %}
-            </div>
-        </div>
-    </div>
-</body>
-</html>"""
-
 
 # -------------------------
 # Dynamic Configuration Upload Endpoint
@@ -1377,22 +739,34 @@ def config_upload():
         
     bot_id = data.get("bot_id", "").strip()
     brand_name = data.get("brand_name", "").strip()
-    system_prompt = data.get("system_prompt", "").strip()
+    brand_type = data.get("brand_type", "").strip()
+    brand_facts = data.get("brand_facts", "").strip()
+    system_prompt = data.get("system_prompt", "").strip() or None
     api_key = request.headers.get("X-Tenant-Api-Key", "")
     
-    if not bot_id or not brand_name or not system_prompt or not api_key:
-        return jsonify({"error": "bot_id, brand_name, system_prompt, and X-Tenant-Api-Key header are required fields"}), 400
+    if not bot_id or not brand_name or not api_key:
+        return jsonify({"error": "bot_id, brand_name, and X-Tenant-Api-Key header are required fields"}), 400
 
     if not is_valid_bot_id(bot_id):
         return jsonify({"error": "bot_id must be 3-50 characters, lowercase letters, numbers, and underscores only"}), 400
 
-    # Validate system prompt for format string safety
-    try:
-        system_prompt.format(context="", history="", question="")
-    except (KeyError, IndexError, ValueError) as e:
-        return jsonify({"error": f"Invalid system_prompt format: {e}. Literal braces must be doubled ({{{{ or }}}})."}), 400
-
     existing = db.bot_configs.find_one({"bot_id": bot_id})
+    if not existing:
+        if not brand_type or brand_type not in TEMPLATES:
+            return jsonify({"error": f"brand_type must be one of {list(TEMPLATES.keys())}"}), 400
+    else:
+        if not brand_type:
+            brand_type = existing.get("brand_type", "ebook")
+        elif brand_type not in TEMPLATES:
+            return jsonify({"error": f"brand_type must be one of {list(TEMPLATES.keys())}"}), 400
+
+    # Validate system prompt for format string safety ONLY if explicitly provided
+    if system_prompt:
+        try:
+            system_prompt.format(context="", history="", question="")
+        except (KeyError, IndexError, ValueError) as e:
+            return jsonify({"error": f"Invalid system_prompt format: {e}. Literal braces must be doubled ({{{{ or }}}})."}), 400
+
     new_tenant_key = None
 
     if existing:
@@ -1405,9 +779,7 @@ def config_upload():
         if not provision_key or not hmac.compare_digest(api_key, provision_key):
             return jsonify({"error": "Unauthorized to create new bot_id"}), 401
         
-        # A brand-new tenant must be created with a working admin password —
-        # otherwise nobody can ever log into their lead dashboard until
-        # someone notices and re-uploads config.
+        # A brand-new tenant must be created with a working admin password
         admin_password_check = data.get("admin_password", "").strip()
         if not admin_password_check:
             return jsonify({"error": "admin_password is required when creating a new bot_id"}), 400
@@ -1444,6 +816,8 @@ def config_upload():
         update_doc = {
             "bot_id": bot_id,
             "brand_name": brand_name,
+            "brand_type": brand_type,
+            "brand_facts": brand_facts,
             "welcome_message": welcome_message,
             "primary_color": primary_color,
             "primary_light_color": primary_light_color,
@@ -1562,215 +936,106 @@ def get_bot_config(bot_id):
         return jsonify({"error": str(e)}), 404
 
 # -------------------------
-# Admin Portal Routes
+# Claymorphism SaaS Dashboard Routes
 # -------------------------
-@app.route("/admin/<bot_id>", methods=["GET", "POST"])
-def admin_login(bot_id):
-    error = None
-    if request.method == "POST":
-        username = request.form.get("username", "").strip()
-        password = request.form.get("password", "")
-        config = load_bot_config(bot_id)
-        
-        tenant_username = config.get("admin_username")
-        tenant_password_hash = config.get("admin_password")
-        
-        # Fallback if tenant didn't set a username
-        if not tenant_username:
-            tenant_username = "admin"
+@app.route("/admin/dashboard", methods=["GET"])
+@app.route("/admin", methods=["GET"])
+def saas_admin_dashboard():
+    """Serves the Claymorphism Super Admin Brands Overview"""
+    try:
+        brands = list(db.tenants.find().sort("created_at", -1))
+        if not brands:
+            brands = list(db.bot_configs.find().sort("brand_name", 1))
             
-        if tenant_password_hash and tenant_username and username == tenant_username and check_password_hash(tenant_password_hash, password):
-            session["admin_logged_in_bot"] = bot_id
-            return redirect(url_for("admin_chats", bot_id=bot_id))
-        else:
-            error = "Invalid administrative credentials"
-    return render_template_string(ADMIN_LOGIN_HTML, error=error)
+        active_count = sum(1 for b in brands if b.get("status") == "active" or (b.get("status") is None and b.get("is_active", True) is True))
+        suspended_count = sum(1 for b in brands if b.get("status") == "suspended" or b.get("is_active") is False)
+        total_leads = db.chats.count_documents({})
+        
+        stats = {
+            "active_brands": active_count,
+            "suspended_brands": suspended_count,
+            "total_leads": total_leads,
+            "mrr": f"${active_count * 49}"
+        }
+    except Exception as e:
+        print(f"[ERROR] Failed to load dashboard data: {e}")
+        brands = []
+        stats = {"active_brands": 0, "suspended_brands": 0, "total_leads": 0, "mrr": "$0"}
+        
+    return render_template("admin/super_dashboard.html", brands=brands, stats=stats)
 
-@app.route("/admin/<bot_id>/chats", methods=["GET"])
-def admin_chats(bot_id):
-    if session.get("admin_logged_in_bot") != bot_id:
-        return redirect(url_for("admin_login", bot_id=bot_id))
+@app.route("/admin/brand/new", methods=["GET"])
+def saas_admin_add_brand():
+    """Serves the Claymorphism Add Brand Wizard"""
+    return render_template("admin/add_brand.html")
+
+@app.route("/admin/brand/<bot_id>", methods=["GET"])
+@app.route("/admin/<bot_id>", methods=["GET"])
+def saas_admin_brand_detail(bot_id):
+    """Serves the Claymorphism Brand Detail & Config Panel"""
+    brand = db.tenants.find_one({"bot_id": bot_id})
+    if not brand:
+        brand = db.bot_configs.find_one({"bot_id": bot_id})
+    if not brand:
+        brand = _default_config(bot_id)
         
     try:
-        # Query chats from MongoDB
-        chats_cursor = db.chats.find({"bot_id": bot_id}).sort("started_at", -1)
-        
-        chats = []
-        for chat in chats_cursor:
-            # Map MongoDB ObjectId to 'id' string so HTML template works seamlessly
-            chat["id"] = str(chat["_id"])
-            chats.append(chat)
-            
+        total_chats = db.chats.count_documents({"bot_id": bot_id})
+        leads = list(db.chats.find({"bot_id": bot_id}).sort("started_at", -1).limit(50))
+        for l in leads:
+            l["id"] = str(l["_id"])
     except Exception as e:
-        print(f"[ERROR] Failed to query leads: {e}")
-        chats = []
+        print(f"[ERROR] Failed to load brand detail data for {bot_id}: {e}")
+        total_chats = 0
+        leads = []
         
-    return render_template_string(ADMIN_CHATS_HTML, chats=chats, selected_bot_id=bot_id)
+    stats = {
+        "total_messages": total_chats,
+        "total_leads": len(leads)
+    }
+    return render_template("admin/brand_detail.html", brand=brand, bot_id=bot_id, leads=leads, stats=stats)
 
-@app.route("/admin/<bot_id>/chats/<chat_id>", methods=["GET"])
-def admin_chat_detail(bot_id, chat_id):
-    if session.get("admin_logged_in_bot") != bot_id:
-        return redirect(url_for("admin_login", bot_id=bot_id))
+@app.route("/tenant/dashboard", methods=["GET"])
+def saas_tenant_dashboard():
+    """Serves the Claymorphism Tenant / Brand Admin Dashboard"""
+    bot_id = request.args.get("bot_id", "tecwrites")
+    brand = load_bot_config(bot_id)
     try:
-        chat = db.chats.find_one({"_id": ObjectId(chat_id), "bot_id": bot_id})
-        
-        if not chat:
-            return "Chat not found", 404
-            
-        chat["id"] = str(chat["_id"])
-        
-        transcript_list = []
-        raw_transcript = chat.get("transcript", "")
-        if raw_transcript:
-            lines = raw_transcript.split('\n')
-            for line in lines:
-                if line.startswith("User: "):
-                    transcript_list.append({"sender": "User", "text": line[6:]})
-                elif line.startswith("Bot: "):
-                    transcript_list.append({"sender": "Bot", "text": line[5:]})
+        leads = list(db.chats.find({"bot_id": bot_id}).sort("started_at", -1).limit(50))
+        for l in leads:
+            l["id"] = str(l["_id"])
     except Exception as e:
-        print(f"[ERROR] Failed to fetch lead detail: {e}")
-        return "Internal server error", 500
-        
-    return render_template_string(ADMIN_DETAIL_HTML, chat=chat, transcript_list=transcript_list)
+        leads = []
+    return render_template("admin/tenant_dashboard.html", brand=brand, bot_id=bot_id, leads=leads)
 
-@app.route("/admin/<bot_id>/logout", methods=["GET"])
-def admin_logout(bot_id):
-    session.pop("admin_logged_in_bot", None)
-    return redirect(url_for("admin_login", bot_id=bot_id))
-
-# -------------------------
-# Super Admin Portal (Master SaaS Dashboard)
-# -------------------------
+# Backward Compatibility / Redirects to Claymorphism Dashboard
 @app.route("/superadmin", methods=["GET", "POST"])
-def superadmin_login():
-    error = None
-    if request.method == "POST":
-        username = request.form.get("username", "").strip()
-        password = request.form.get("password", "")
-        master_pass = os.getenv("ADMIN_PASSWORD", "Pak123@#")
-        if username == "superadmin" and password == master_pass:
-            session["superadmin_logged_in"] = True
-            return redirect(url_for("superadmin_brands"))
-        else:
-            error = "Invalid master credentials"
-    return render_template_string(SUPER_ADMIN_LOGIN_HTML, error=error)
-
 @app.route("/superadmin/leads", methods=["GET"])
-def superadmin_leads():
-    if not session.get("superadmin_logged_in"):
-        return redirect(url_for("superadmin_login"))
-    chats = list(db.chats.find().sort("started_at", -1))
-    return render_template_string(SUPER_ADMIN_LEADS_HTML, chats=chats, active_tab='leads')
-
 @app.route("/superadmin/brands", methods=["GET"])
-def superadmin_brands():
-    if not session.get("superadmin_logged_in"):
-        return redirect(url_for("superadmin_login"))
-    brands = list(db.bot_configs.find().sort("brand_name", 1))
-    return render_template_string(SUPER_ADMIN_BRANDS_HTML, brands=brands, active_tab='brands')
+def legacy_superadmin_redirect():
+    return redirect(url_for("saas_admin_dashboard"))
 
-@app.route("/superadmin/brands/add", methods=["POST"])
-def superadmin_add_brand():
-    if not session.get("superadmin_logged_in"):
-        return redirect(url_for("superadmin_login"))
-    
-    bot_id = request.form.get("bot_id", "").strip()
-    brand_name = request.form.get("brand_name", "").strip()
-    admin_username = request.form.get("admin_username", "").strip()
-    admin_password = request.form.get("admin_password", "").strip()
-    system_prompt = request.form.get("system_prompt", "").strip()
-    
-    if bot_id:
-        db.bot_configs.update_one(
-            {"bot_id": bot_id},
-            {"$set": {
-                "brand_name": brand_name,
-                "admin_username": admin_username,
-                "admin_password": generate_password_hash(admin_password) if admin_password else None,
-                "system_prompt": system_prompt.replace("{brand_name}", brand_name),
-                "is_active": True
-            }},
-            upsert=True
-        )
-        if bot_id in _config_cache:
-            del _config_cache[bot_id]
-            
-    return redirect(url_for("superadmin_brands"))
-
-@app.route("/superadmin/brands/<bot_id>/toggle", methods=["POST"])
-def superadmin_toggle_brand(bot_id):
-    if not session.get("superadmin_logged_in"):
-        return redirect(url_for("superadmin_login"))
-    
-    brand = db.bot_configs.find_one({"bot_id": bot_id})
-    if brand:
-        new_status = False if brand.get("is_active", True) else True
-        db.bot_configs.update_one({"bot_id": bot_id}, {"$set": {"is_active": new_status}})
-        if bot_id in _config_cache:
-            del _config_cache[bot_id]
-            
-    return redirect(url_for("superadmin_brands"))
-
-@app.route("/superadmin/brands/<bot_id>/delete", methods=["POST"])
-def superadmin_delete_brand(bot_id):
-    if not session.get("superadmin_logged_in"):
-        return redirect(url_for("superadmin_login"))
-    
-    db.bot_configs.delete_one({"bot_id": bot_id})
-    # Optionally delete chats: db.chats.delete_many({"bot_id": bot_id})
-    if bot_id in _config_cache:
-        del _config_cache[bot_id]
-        
-    return redirect(url_for("superadmin_brands"))
-
-@app.route("/superadmin/logout", methods=["GET"])
-def superadmin_logout():
-    session.pop("superadmin_logged_in", None)
-    return redirect(url_for("superadmin_login"))
-
+@app.route("/tenant/<bot_id>", methods=["GET", "POST"])
+@app.route("/tenant/<bot_id>/chats", methods=["GET"])
+@app.route("/tenant/<bot_id>/chats/<chat_id>", methods=["GET"])
+def legacy_tenant_redirect(bot_id, chat_id=None):
+    return redirect(url_for("saas_admin_brand_detail", bot_id=bot_id))
 
 # -------------------------
-# Widget Route
+# Widget & Frontend Asset Routes
 # -------------------------
 @app.route("/widget", methods=["GET"])
 def widget():
-    """
-    Serves the minimal chat-only interface for embedding in standard iFrames.
-    """
-    
     bot_id = request.args.get("bot_id")
     if bot_id:
         config = load_bot_config(bot_id)
-        if config.get("is_active") is False:
+        if config.get("status") == "suspended" or config.get("is_active") is False:
             return render_template('widget_suspended.html'), 403
     return send_from_directory('frontend', 'widget.html')
 
 @app.route("/frontend/<path:filename>", methods=["GET"])
 def serve_frontend(filename):
-    """
-    Serves static frontend assets (like widget.js).
-    """
     return send_from_directory('frontend', filename)
-
-# -------------------------
-# SaaS Dashboard Routes
-# -------------------------
-@app.route("/admin/dashboard", methods=["GET"])
-def saas_admin_dashboard():
-    return render_template("admin/super_dashboard.html")
-
-@app.route("/admin/brand/new", methods=["GET"])
-def saas_admin_add_brand():
-    return render_template("admin/add_brand.html")
-
-@app.route("/admin/brand/<bot_id>", methods=["GET"])
-def saas_admin_brand_detail(bot_id):
-    return render_template("admin/brand_detail.html", bot_id=bot_id)
-
-@app.route("/tenant/dashboard", methods=["GET"])
-def saas_tenant_dashboard():
-    return render_template("admin/tenant_dashboard.html")
 
 # -------------------------
 # Debug endpoints

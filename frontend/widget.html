@@ -640,7 +640,7 @@
         const urlParams = new URLSearchParams(window.location.search);
         const botId = urlParams.get('bot_id') || 'self_publishing';
         const apiBaseUrl = urlParams.get('api_base') || window.location.origin;
-        const widgetApiKey = urlParams.get('widget_api_key') || '';
+        const widgetApiKey = urlParams.get('widget_api_key') || urlParams.get('api_key') || '';
 
         const CONFIG = {
             API_BASE_URL: apiBaseUrl,

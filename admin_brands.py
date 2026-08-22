@@ -9,7 +9,7 @@ admin_brands_bp = Blueprint('admin_brands', __name__)
 
 # Reconnect to MongoDB for this blueprint
 MONGO_URI = os.getenv("MONGO_URI", "mongodb://localhost:27017/chatbot")
-mongo_client = MongoClient(MONGO_URI)
+mongo_client = MongoClient(MONGO_URI, serverSelectionTimeoutMS=5000)
 db = mongo_client.get_default_database()
 
 def require_super_admin():
@@ -21,12 +21,20 @@ def require_super_admin():
 @admin_brands_bp.route('/api/admin/brands', methods=['GET'])
 def get_brands():
     """List all tenants"""
-    # Temporarily skipping auth check for local dev testing as requested in Phase 2
-    # if not require_super_admin():
-    #     return jsonify({"error": "Unauthorized"}), 401
-        
     tenants = list(db.tenants.find({}, {"_id": 0}))
+    if not tenants:
+        tenants = list(db.bot_configs.find({}, {"_id": 0}))
     return jsonify({"brands": tenants})
+
+@admin_brands_bp.route('/api/admin/brands/<bot_id>', methods=['GET'])
+def get_brand(bot_id):
+    """Get single tenant details"""
+    tenant = db.tenants.find_one({"bot_id": bot_id}, {"_id": 0})
+    if not tenant:
+        tenant = db.bot_configs.find_one({"bot_id": bot_id}, {"_id": 0})
+    if not tenant:
+        return jsonify({"error": "Brand not found"}), 404
+    return jsonify({"brand": tenant})
 
 @admin_brands_bp.route('/api/admin/brands', methods=['POST'])
 def create_brand():
@@ -40,10 +48,19 @@ def create_brand():
     if db.tenants.find_one({"bot_id": bot_id}):
         return jsonify({"error": "bot_id already exists"}), 400
         
+    brand_type = data.get("brand_type", "ebook").strip()
+    if brand_type not in ["ebook", "design", "hybrid"]:
+        brand_type = "ebook"
+        
+    brand_facts = data.get("brand_facts", "").strip()
+    system_prompt = data.get("system_prompt", "").strip() or None
+
     # 1. Create Mongo Document
     new_tenant = {
         "bot_id": bot_id,
         "brand_name": data.get("brand_name", bot_id),
+        "brand_type": brand_type,
+        "brand_facts": brand_facts,
         "owner_email": data.get("owner_email", ""),
         "status": "active",
         "widget_api_key": f"sk_{bot_id}_{secrets.token_urlsafe(16)}",
@@ -54,11 +71,12 @@ def create_brand():
         },
         "primary_color": data.get("primary_color", "#0d9488"),
         "welcome_message": data.get("welcome_message", "Hello! How can I help you today?"),
-        "system_prompt": data.get("system_prompt", "You are a helpful assistant."),
+        "system_prompt": system_prompt,
         "webhook_url": data.get("webhook_url", "")
     }
     
     db.tenants.insert_one(new_tenant)
+    db.bot_configs.replace_one({"bot_id": bot_id}, new_tenant, upsert=True)
     
     # 2. Create Folder
     brand_folder = os.path.join("data", "brands", bot_id)

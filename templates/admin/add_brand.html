@@ -1,12 +1,13 @@
 {% extends "base.html" %}
 
-{% block title %}Add Brand Wizard - Step 1{% endblock %}
+{% block title %}Add Brand Wizard - ChatPulse{% endblock %}
 
 {% block body_class %}bg-background text-on-background min-h-screen flex items-center justify-center p-margin-mobile md:p-margin-desktop relative{% endblock %}
 
 {% block content %}
 <!-- Dimmed Background Overlay -->
 <div class="fixed inset-0 bg-on-background/20 backdrop-blur-sm z-0"></div>
+
 <!-- Main Modal Card -->
 <div class="relative z-10 w-full max-w-2xl bg-surface rounded-clay p-lg md:p-xl clay-shadow border border-white/50">
 <!-- Header & Step Indicator -->
@@ -15,37 +16,65 @@
 <div class="flex items-center gap-sm">
 <!-- Step 1: Active -->
 <div class="flex-1 h-2 bg-primary rounded-full clay-shadow"></div>
-<!-- Step 2: Inactive -->
-<div class="flex-1 h-2 bg-surface-variant rounded-full clay-inset"></div>
-<!-- Step 3: Inactive -->
-<div class="flex-1 h-2 bg-surface-variant rounded-full clay-inset"></div>
+<!-- Step 2: Active -->
+<div class="flex-1 h-2 bg-primary rounded-full clay-shadow"></div>
+<!-- Step 3: Active -->
+<div class="flex-1 h-2 bg-primary rounded-full clay-shadow"></div>
 </div>
 <div class="flex justify-between mt-sm text-on-surface-variant">
-<span class="font-label-sm text-label-sm text-primary">Brand Info</span>
-<span class="font-label-sm text-label-sm">Branding</span>
-<span class="font-label-sm text-label-sm">Knowledge Base</span>
+<span class="font-label-sm text-label-sm text-primary font-bold">Brand Info</span>
+<span class="font-label-sm text-label-sm text-primary font-bold">Configuration</span>
+<span class="font-label-sm text-label-sm text-primary font-bold">Ready</span>
 </div>
 </div>
+
+<div id="errorAlert" class="hidden mb-md p-4 bg-error-container/40 text-on-error-container rounded-xl font-label-sm border border-error/30 text-sm"></div>
+
 <!-- Form Fields -->
-<form class="space-y-md" action="/admin/dashboard" method="GET">
+<form id="addBrandForm" class="space-y-md">
 <!-- Brand Name -->
 <div class="flex flex-col gap-xs">
 <label class="font-body-md text-body-md text-on-surface ml-unit" for="brandName">Brand Name</label>
-<input class="w-full bg-surface-container rounded-full px-md py-sm font-body-lg text-body-lg text-on-background border-none clay-inset clay-inset-focus transition-all duration-200" id="brandName" placeholder="e.g., ChatPulse Inc." type="text"/>
+<input class="w-full bg-surface-container rounded-full px-md py-sm font-body-lg text-body-lg text-on-background border-none clay-inset clay-inset-focus transition-all duration-200" id="brandName" placeholder="e.g., Self Publishing Consultant" type="text" required/>
 </div>
-<!-- Owner Email -->
-<div class="flex flex-col gap-xs">
-<label class="font-body-md text-body-md text-on-surface ml-unit" for="ownerEmail">Owner Email</label>
-<input class="w-full bg-surface-container rounded-full px-md py-sm font-body-lg text-body-lg text-on-background border-none clay-inset clay-inset-focus transition-all duration-200" id="ownerEmail" placeholder="admin@brand.com" type="email"/>
-</div>
+
 <!-- Bot ID/Slug -->
 <div class="flex flex-col gap-xs">
 <label class="font-body-md text-body-md text-on-surface ml-unit" for="botSlug">Bot ID / Slug</label>
 <div class="relative">
 <span class="absolute inset-y-0 left-0 flex items-center pl-md text-on-surface-variant font-body-lg text-body-lg">@</span>
-<input class="w-full bg-surface-container rounded-full pl-xl pr-md py-sm font-body-lg text-body-lg text-on-background border-none clay-inset clay-inset-focus transition-all duration-200" id="botSlug" placeholder="brand-bot" type="text"/>
+<input class="w-full bg-surface-container rounded-full pl-xl pr-md py-sm font-body-lg text-body-lg text-on-background border-none clay-inset clay-inset-focus transition-all duration-200" id="botSlug" placeholder="tecwrites" type="text" required pattern="^[a-z0-9_]{3,50}$"/>
 </div>
-<p class="font-label-sm text-label-sm text-outline ml-unit mt-xs">This will be used for unique bot links and API access.</p>
+<p class="font-label-sm text-label-sm text-outline ml-unit mt-xs">3-50 chars, lowercase letters, numbers, and underscores only.</p>
+</div>
+
+<!-- Owner Email -->
+<div class="flex flex-col gap-xs">
+<label class="font-body-md text-body-md text-on-surface ml-unit" for="ownerEmail">Owner Email</label>
+<input class="w-full bg-surface-container rounded-full px-md py-sm font-body-lg text-body-lg text-on-background border-none clay-inset clay-inset-focus transition-all duration-200" id="ownerEmail" placeholder="admin@example.com" type="email"/>
+</div>
+
+<!-- Brand Type -->
+<div class="flex flex-col gap-xs">
+<label class="font-body-md text-body-md text-on-surface ml-unit" for="brandType">Brand Type</label>
+<select class="w-full bg-surface-container rounded-2xl px-md py-sm font-body-md text-body-md text-on-background border-none clay-inset clay-inset-focus transition-all duration-200" id="brandType" required>
+    <option value="ebook" selected>E-Book & Author Publishing Services (e.g. Editing, Cover, ISBN, Distribution)</option>
+    <option value="design">Digital & Design Agency (e.g. SEO, Web Dev, Mobile Apps, Branding, Ads)</option>
+    <option value="hybrid">Hybrid Writing & Digital Marketing (e.g. Tech Writing, Web Dev, SEO, Branding)</option>
+</select>
+<p class="font-label-sm text-label-sm text-outline ml-unit mt-xs">Controls the AI system prompt template and service interest tracking.</p>
+</div>
+
+<!-- Brand Facts & Differentiators -->
+<div class="flex flex-col gap-xs">
+<label class="font-body-md text-body-md text-on-surface ml-unit" for="brandFacts">Brand Differentiators & Facts (Optional)</label>
+<textarea class="w-full bg-surface-container rounded-2xl px-md py-sm font-body-md text-body-md text-on-background border-none clay-inset clay-inset-focus transition-all duration-200" id="brandFacts" rows="2" placeholder="e.g. Specializes in fantasy manuscripts, or offers UAE business formation support"></textarea>
+</div>
+
+<!-- Welcome Message -->
+<div class="flex flex-col gap-xs">
+<label class="font-body-md text-body-md text-on-surface ml-unit" for="welcomeMessage">Welcome Message</label>
+<input class="w-full bg-surface-container rounded-full px-md py-sm font-body-md text-body-md text-on-background border-none clay-inset clay-inset-focus transition-all duration-200" id="welcomeMessage" placeholder="Hello! How can I assist you today?" type="text" value="Hello! How can I assist you today?"/>
 </div>
 
 <!-- Navigation Buttons -->
@@ -53,11 +82,89 @@
 <a href="/admin/dashboard" class="font-body-lg text-body-lg text-on-surface-variant hover:text-primary transition-colors px-md py-sm rounded-full hover:bg-surface-container">
     Cancel
 </a>
-<button class="bg-primary text-on-primary font-body-lg text-body-lg px-xl py-sm rounded-full clay-shadow hover:scale-[1.02] active:scale-95 transition-all duration-200 flex items-center gap-sm" type="submit">
-    Next
+<button id="submitBtn" class="bg-primary text-on-primary font-body-lg text-body-lg px-xl py-sm rounded-full clay-shadow hover:scale-[1.02] active:scale-95 transition-all duration-200 flex items-center gap-sm" type="submit">
+    <span>Create Brand</span>
     <span class="material-symbols-outlined text-lg">arrow_forward</span>
 </button>
 </div>
 </form>
 </div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    const brandNameInput = document.getElementById('brandName');
+    const botSlugInput = document.getElementById('botSlug');
+    const ownerEmailInput = document.getElementById('ownerEmail');
+    const brandTypeInput = document.getElementById('brandType');
+    const brandFactsInput = document.getElementById('brandFacts');
+    const welcomeMessageInput = document.getElementById('welcomeMessage');
+    const form = document.getElementById('addBrandForm');
+    const submitBtn = document.getElementById('submitBtn');
+    const errorAlert = document.getElementById('errorAlert');
+
+    let slugManuallyEdited = false;
+    botSlugInput.addEventListener('input', () => {
+        slugManuallyEdited = true;
+    });
+
+    brandNameInput.addEventListener('input', () => {
+        if (!slugManuallyEdited) {
+            botSlugInput.value = brandNameInput.value
+                .trim()
+                .toLowerCase()
+                .replace(/[^a-z0-9_]+/g, '_')
+                .replace(/^_+|_+$/g, '');
+        }
+    });
+
+    form.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        errorAlert.classList.add('hidden');
+        errorAlert.textContent = '';
+        
+        const bot_id = botSlugInput.value.trim().toLowerCase();
+        const brand_name = brandNameInput.value.trim();
+        const owner_email = ownerEmailInput.value.trim();
+        const brand_type = brandTypeInput.value.trim();
+        const brand_facts = brandFactsInput.value.trim();
+        const welcome_message = welcomeMessageInput.value.trim();
+
+        if (!bot_id || !brand_name) {
+            errorAlert.textContent = 'Please fill in required fields.';
+            errorAlert.classList.remove('hidden');
+            return;
+        }
+
+        submitBtn.disabled = true;
+        submitBtn.innerHTML = '<span>Creating...</span>';
+
+        try {
+            const res = await fetch('/api/admin/brands', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    bot_id: bot_id,
+                    brand_name: brand_name,
+                    brand_type: brand_type,
+                    brand_facts: brand_facts,
+                    owner_email: owner_email,
+                    welcome_message: welcome_message
+                })
+            });
+
+            const data = await res.json();
+            if (!res.ok) {
+                throw new Error(data.error || 'Failed to create brand.');
+            }
+
+            window.location.href = `/admin/brand/${bot_id}`;
+        } catch (err) {
+            errorAlert.textContent = err.message;
+            errorAlert.classList.remove('hidden');
+            submitBtn.disabled = false;
+            submitBtn.innerHTML = '<span>Create Brand</span><span class="material-symbols-outlined text-lg">arrow_forward</span>';
+        }
+    });
+</script>
 {% endblock %}

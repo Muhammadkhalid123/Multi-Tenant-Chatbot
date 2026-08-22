@@ -1,24 +1,39 @@
 {% extends "base.html" %}
 
-{% block title %}Brand Detail - ChatPulse{% endblock %}
+{% block title %}{{ brand.brand_name or bot_id }} - Brand Detail - ChatPulse{% endblock %}
 
 {% block body_class %}bg-background text-on-background min-h-screen font-body-md pb-xl{% endblock %}
 
 {% block content %}
-<!-- Contextual Header (Detail View, Nav Shell Suppressed) -->
+<!-- Contextual Header -->
 <header class="sticky top-0 z-40 bg-background/90 backdrop-blur-md px-margin-mobile md:px-margin-desktop py-4 flex items-center justify-between border-b border-surface-container-highest/50">
 <div class="flex items-center gap-md">
 <a href="/admin/dashboard" class="w-12 h-12 rounded-full flex items-center justify-center bg-surface text-primary clay-outer hover:scale-[1.02] active:scale-95 transition-all">
 <span class="material-symbols-outlined">arrow_back</span>
 </a>
 <div class="flex items-center gap-sm">
-<h1 class="font-headline-lg text-headline-lg text-primary">Acme Corp</h1>
+<h1 class="font-headline-lg text-headline-lg text-primary">{{ brand.brand_name or bot_id }}</h1>
+<span class="px-3 py-1 rounded-full bg-primary-container text-on-primary-container font-label-sm text-label-sm uppercase tracking-wider font-semibold">
+{{ brand.brand_type or 'ebook' }}
+</span>
+{% if brand.status == 'suspended' or brand.is_active == False %}
+<span class="px-4 py-1.5 rounded-full bg-error-container text-on-error-container font-label-sm text-label-sm flex items-center gap-1 shadow-[inset_2px_2px_5px_rgba(0,0,0,0.05)]">
+<span class="material-symbols-outlined text-[16px] text-error">block</span> Suspended
+</span>
+{% else %}
 <span class="px-4 py-1.5 rounded-full bg-secondary-container text-on-secondary-container font-label-sm text-label-sm flex items-center gap-1 shadow-[inset_2px_2px_5px_rgba(0,0,0,0.05),inset_-2px_-2px_5px_rgba(255,255,255,0.5)]">
 <span class="material-symbols-outlined text-[16px] text-secondary">check_circle</span> Active
 </span>
+{% endif %}
 </div>
+</div>
+<div class="flex items-center gap-2">
+<a href="/widget?bot_id={{ bot_id }}" target="_blank" class="px-5 py-2 rounded-full bg-surface text-primary font-label-sm text-label-sm clay-outer hover:scale-[1.02] active:scale-95 transition-all flex items-center gap-2">
+<span class="material-symbols-outlined text-[18px]">open_in_new</span> Test Widget
+</a>
 </div>
 </header>
+
 <main class="px-margin-mobile md:px-margin-desktop py-md max-w-[1400px] mx-auto flex flex-col gap-lg">
 <!-- Tabs Navigation -->
 <nav class="overflow-x-auto hide-scrollbar py-2 -mx-2 px-2">
@@ -27,19 +42,17 @@
 <button class="tab-btn px-6 py-3 rounded-full bg-primary-container text-on-primary-container font-label-sm text-label-sm clay-inset transition-all" data-target="tab-overview">Overview</button>
 </li>
 <li>
+<button class="tab-btn px-6 py-3 rounded-full bg-surface text-on-surface-variant font-label-sm text-label-sm clay-outer hover:scale-[1.02] active:scale-95 transition-all" data-target="tab-leads">Leads ({{ leads|length }})</button>
+</li>
+<li>
 <button class="tab-btn px-6 py-3 rounded-full bg-surface text-on-surface-variant font-label-sm text-label-sm clay-outer hover:scale-[1.02] active:scale-95 transition-all" data-target="tab-config">Configuration</button>
 </li>
 <li>
-<button class="tab-btn px-6 py-3 rounded-full bg-surface text-on-surface-variant font-label-sm text-label-sm clay-outer hover:scale-[1.02] active:scale-95 transition-all" data-target="tab-leads">Leads</button>
-</li>
-<li>
-<button class="tab-btn px-6 py-3 rounded-full bg-surface text-on-surface-variant font-label-sm text-label-sm clay-outer hover:scale-[1.02] active:scale-95 transition-all" data-target="tab-billing">Billing</button>
-</li>
-<li>
-<button class="tab-btn px-6 py-3 rounded-full bg-surface text-error font-label-sm text-label-sm clay-outer hover:scale-[1.02] active:scale-95 transition-all" data-target="tab-danger">Danger zone</button>
+<button class="tab-btn px-6 py-3 rounded-full bg-surface text-error font-label-sm text-label-sm clay-outer hover:scale-[1.02] active:scale-95 transition-all" data-target="tab-danger">Danger Zone</button>
 </li>
 </ul>
 </nav>
+
 <!-- Tab Content: Overview -->
 <section class="tab-content flex flex-col gap-lg" id="tab-overview">
 <!-- Stats Grid -->
@@ -50,82 +63,162 @@
 <span class="material-symbols-outlined text-[24px]">forum</span>
 <h3 class="font-label-sm text-label-sm text-on-surface-variant">Messages Processed</h3>
 </div>
-<p class="font-headline-xl text-headline-xl text-on-surface">14,289</p>
-<p class="font-body-md text-body-md text-sm text-secondary flex items-center gap-1"><span class="material-symbols-outlined text-[16px]">trending_up</span> +12% this month</p>
+<p class="font-headline-xl text-headline-xl text-on-surface">{{ stats.total_messages if stats else 0 }}</p>
+<p class="font-body-md text-body-md text-sm text-secondary flex items-center gap-1"><span class="material-symbols-outlined text-[16px]">trending_up</span> Real-time MongoDB</p>
 </div>
 <!-- Leads -->
 <div class="bg-surface rounded-xl p-6 clay-outer flex flex-col gap-2">
 <div class="flex items-center gap-2 text-primary">
 <span class="material-symbols-outlined text-[24px]">person_add</span>
-<h3 class="font-label-sm text-label-sm text-on-surface-variant">Leads Generated</h3>
+<h3 class="font-label-sm text-label-sm text-on-surface-variant">Leads Captured</h3>
 </div>
-<p class="font-headline-xl text-headline-xl text-on-surface">842</p>
-<p class="font-body-md text-body-md text-sm text-secondary flex items-center gap-1"><span class="material-symbols-outlined text-[16px]">trending_up</span> +5% this month</p>
+<p class="font-headline-xl text-headline-xl text-on-surface">{{ stats.total_leads if stats else (leads|length) }}</p>
+<p class="font-body-md text-body-md text-sm text-secondary flex items-center gap-1"><span class="material-symbols-outlined text-[16px]">verified</span> Active pipeline</p>
 </div>
 <!-- Tier -->
 <div class="bg-surface rounded-xl p-6 clay-outer flex flex-col gap-2 justify-between">
 <div>
 <div class="flex items-center gap-2 text-primary mb-2">
 <span class="material-symbols-outlined text-[24px]">workspace_premium</span>
-<h3 class="font-label-sm text-label-sm text-on-surface-variant">Current Tier</h3>
+<h3 class="font-label-sm text-label-sm text-on-surface-variant">Plan Tier</h3>
 </div>
-<p class="font-headline-md text-headline-md text-on-surface">Pro Plan</p>
+<p class="font-headline-md text-headline-md text-on-surface">{{ brand.plan_tier or 'Pro Tier' }}</p>
 </div>
-<button class="w-max px-4 py-1.5 rounded-full bg-primary text-on-primary font-label-sm text-label-sm clay-outer hover:scale-[1.02] active:scale-95 transition-all text-xs">Upgrade</button>
+<span class="text-xs text-on-surface-variant">Unlimited bot queries</span>
 </div>
-<!-- Next Billing -->
+<!-- API Key -->
 <div class="bg-surface rounded-xl p-6 clay-outer flex flex-col gap-2">
 <div class="flex items-center gap-2 text-primary">
-<span class="material-symbols-outlined text-[24px]">event</span>
-<h3 class="font-label-sm text-label-sm text-on-surface-variant">Next Billing</h3>
+<span class="material-symbols-outlined text-[24px]">key</span>
+<h3 class="font-label-sm text-label-sm text-on-surface-variant">Widget API Key</h3>
 </div>
-<p class="font-headline-md text-headline-md text-on-surface mt-1">Oct 15, 2023</p>
-<p class="font-body-md text-body-md text-sm text-on-surface-variant opacity-70">$49.00 USD</p>
+<p class="font-mono text-xs text-on-surface mt-1 truncate select-all">{{ brand.widget_api_key or ('sk_' ~ bot_id ~ '_live') }}</p>
+<p class="font-body-md text-body-md text-xs text-on-surface-variant opacity-70">Secures /ask and /lead endpoints</p>
 </div>
 </div>
+
 <!-- Embed Snippet Card -->
 <div class="bg-surface rounded-xl p-lg clay-outer relative overflow-hidden">
 <div class="absolute top-0 right-0 w-64 h-64 bg-primary-container rounded-full blur-[80px] opacity-20 -mr-20 -mt-20 pointer-events-none"></div>
 <h2 class="font-headline-md text-headline-md text-primary mb-4 flex items-center gap-2"><span class="material-symbols-outlined">code</span> Embed Snippet</h2>
-<p class="font-body-md text-body-md text-on-surface-variant mb-6 max-w-2xl">Copy and paste this snippet into the <code>&lt;head&gt;</code> tag of your website to activate the ChatPulse widget for this brand.</p>
+<p class="font-body-md text-body-md text-on-surface-variant mb-6 max-w-2xl">Copy and paste this snippet into the HTML of your website to activate the ChatPulse widget for <strong>{{ brand.brand_name or bot_id }}</strong>.</p>
 <div class="bg-surface-container rounded-lg p-6 font-mono text-sm text-on-surface shadow-[inset_4px_4px_8px_rgba(0,0,0,0.05),inset_-4px_-4px_8px_rgba(255,255,255,0.8)] relative group overflow-x-auto">
-<pre><code>&lt;!-- ChatPulse Widget --&gt;
-&lt;script src="https://cdn.chatpulse.com/widget/v2/loader.js" 
-        data-brand-id="acme-corp-prod-9a8b7c" 
-        data-theme="light" 
+<pre id="snippetCode"><code>&lt;!-- ChatPulse Widget --&gt;
+&lt;script src="{{ request.host_url }}frontend/widget.js" 
+        data-bot-id="{{ bot_id }}" 
+        data-api-key="{{ brand.widget_api_key or ('sk_' ~ bot_id ~ '_live') }}"
         async&gt;&lt;/script&gt;
 &lt;!-- End ChatPulse Widget --&gt;</code></pre>
-<button class="absolute top-4 right-4 px-4 py-2 rounded-full bg-primary text-on-primary font-label-sm text-label-sm flex items-center gap-2 clay-outer hover:scale-[1.05] active:scale-95 transition-all opacity-0 group-hover:opacity-100 focus:opacity-100">
-<span class="material-symbols-outlined text-[18px]">content_copy</span> Copy
+<button id="copySnippetBtn" class="absolute top-4 right-4 px-4 py-2 rounded-full bg-primary text-on-primary font-label-sm text-label-sm flex items-center gap-2 clay-outer hover:scale-[1.05] active:scale-95 transition-all">
+<span class="material-symbols-outlined text-[18px]">content_copy</span> Copy Snippet
 </button>
 </div>
 </div>
 </section>
+
+<!-- Tab Content: Leads -->
+<section class="tab-content hidden flex flex-col gap-lg" id="tab-leads">
+<div class="bg-surface rounded-xl p-lg clay-outer">
+<h2 class="font-headline-md text-headline-md text-primary mb-6 flex items-center gap-2">
+<span class="material-symbols-outlined">group</span> Captured Leads ({{ leads|length }})
+</h2>
+{% if leads %}
+<div class="overflow-x-auto">
+<table class="w-full text-left border-collapse">
+<thead>
+<tr class="border-b border-surface-container-high text-on-surface-variant font-label-sm text-xs">
+<th class="py-3 px-4">Date / Time</th>
+<th class="py-3 px-4">Contact Info</th>
+<th class="py-3 px-4">Name</th>
+<th class="py-3 px-4">Status</th>
+</tr>
+</thead>
+<tbody class="divide-y divide-surface-container-high/40 text-sm">
+{% for lead in leads %}
+<tr class="hover:bg-surface-container-low/50 transition-colors">
+<td class="py-3 px-4 font-mono text-xs">{{ lead.started_at }}</td>
+<td class="py-3 px-4 font-semibold">{{ lead.user_contact or lead.user_email or 'Not provided' }}</td>
+<td class="py-3 px-4">{{ lead.user_name or 'Anonymous' }}</td>
+<td class="py-3 px-4">
+{% if lead.lead_captured %}
+<span class="px-2 py-1 rounded-full bg-secondary-container text-on-secondary-container text-xs font-semibold">Captured</span>
+{% else %}
+<span class="px-2 py-1 rounded-full bg-surface-container text-on-surface-variant text-xs">Chat Only</span>
+{% endif %}
+</td>
+</tr>
+{% endfor %}
+</tbody>
+</table>
+</div>
+{% else %}
+<div class="p-8 text-center text-on-surface-variant">No conversation logs or leads captured yet for this brand.</div>
+{% endif %}
+</div>
+</section>
+
+<!-- Tab Content: Configuration -->
+<section class="tab-content hidden flex flex-col gap-lg" id="tab-config">
+<div class="bg-surface rounded-xl p-lg clay-outer space-y-md max-w-3xl">
+<h2 class="font-headline-md text-headline-md text-primary mb-4 flex items-center gap-2">
+<span class="material-symbols-outlined">tune</span> Brand Settings
+</h2>
+<div class="space-y-4">
+<div>
+<label class="font-label-sm text-on-surface block mb-1">Brand Name</label>
+<input class="w-full bg-surface-container rounded-full px-4 py-2 text-on-background border-none clay-inset" value="{{ brand.brand_name or '' }}" readonly/>
+</div>
+<div>
+<label class="font-label-sm text-on-surface block mb-1">Brand Type Template</label>
+<input class="w-full bg-surface-container rounded-full px-4 py-2 text-on-background border-none clay-inset uppercase font-semibold text-primary" value="{{ brand.brand_type or 'ebook' }}" readonly/>
+</div>
+<div>
+<label class="font-label-sm text-on-surface block mb-1">Brand Differentiators & Facts</label>
+<textarea class="w-full bg-surface-container rounded-2xl px-4 py-2 text-on-background border-none clay-inset" rows="2" readonly>{{ brand.brand_facts or 'None configured (using standard template)' }}</textarea>
+</div>
+<div>
+<label class="font-label-sm text-on-surface block mb-1">Owner Email</label>
+<input class="w-full bg-surface-container rounded-full px-4 py-2 text-on-background border-none clay-inset" value="{{ brand.owner_email or 'Not configured' }}" readonly/>
+</div>
+<div>
+<label class="font-label-sm text-on-surface block mb-1">Welcome Message</label>
+<input class="w-full bg-surface-container rounded-full px-4 py-2 text-on-background border-none clay-inset" value="{{ brand.welcome_message or '' }}" readonly/>
+</div>
+<div>
+<label class="font-label-sm text-on-surface block mb-1">Webhook URL</label>
+<input class="w-full bg-surface-container rounded-full px-4 py-2 text-on-background border-none clay-inset" value="{{ brand.webhook_url or 'Not configured' }}" readonly/>
+</div>
+</div>
+</div>
+</section>
+
 <!-- Tab Content: Danger Zone -->
 <section class="tab-content hidden flex flex-col gap-lg" id="tab-danger">
 <div class="bg-[#fcf3f3] text-on-error-container rounded-xl p-lg clay-error-outer border border-error-container relative overflow-hidden">
 <div class="absolute top-0 right-0 w-64 h-64 bg-error-container rounded-full blur-[80px] opacity-40 -mr-20 -mt-20 pointer-events-none"></div>
 <h2 class="font-headline-md text-headline-md flex items-center gap-2 mb-2"><span class="material-symbols-outlined">warning</span> Danger Zone</h2>
-<p class="font-body-md text-body-md mb-8 opacity-80 max-w-2xl">These actions are destructive and affect the live environment immediately. Please proceed with extreme caution.</p>
+<p class="font-body-md text-body-md mb-8 opacity-80 max-w-2xl">These actions affect the live environment immediately. Please proceed with caution.</p>
 <div class="flex flex-col gap-md max-w-3xl">
-<!-- Suspend -->
+<!-- Suspend / Reactivate -->
 <div class="flex flex-col sm:flex-row sm:items-center justify-between bg-surface/60 backdrop-blur-sm p-6 rounded-lg shadow-[inset_2px_2px_4px_rgba(0,0,0,0.02),inset_-2px_-2px_4px_rgba(255,255,255,0.6)] gap-4">
 <div>
-<h3 class="font-label-sm text-label-sm font-bold text-on-surface">Suspend Brand</h3>
-<p class="font-body-md text-body-md text-sm text-on-surface-variant mt-1">Temporarily halt all bot activity. The widget will not load on client sites.</p>
+<h3 class="font-label-sm text-label-sm font-bold text-on-surface">{% if brand.status == 'suspended' or brand.is_active == False %}Reactivate Brand{% else %}Suspend Brand{% endif %}</h3>
+<p class="font-body-md text-body-md text-sm text-on-surface-variant mt-1">{% if brand.status == 'suspended' or brand.is_active == False %}Re-enable chat widget queries for this brand.{% else %}Temporarily halt all bot activity. The widget will display the suspended screen.{% endif %}</p>
 </div>
-<button class="shrink-0 px-6 py-3 rounded-full bg-tertiary-container text-on-tertiary-container font-label-sm text-label-sm clay-outer hover:scale-[1.02] active:scale-95 transition-all">Suspend this brand</button>
+<button id="toggleStatusBtn" data-status="{{ 'suspended' if brand.status == 'suspended' or brand.is_active == False else 'active' }}" class="shrink-0 px-6 py-3 rounded-full bg-tertiary-container text-on-tertiary-container font-label-sm text-label-sm clay-outer hover:scale-[1.02] active:scale-95 transition-all">
+{% if brand.status == 'suspended' or brand.is_active == False %}Reactivate this brand{% else %}Suspend this brand{% endif %}
+</button>
 </div>
 <!-- Delete -->
 <div class="flex flex-col gap-6 bg-surface/60 backdrop-blur-sm p-6 rounded-lg shadow-[inset_2px_2px_4px_rgba(0,0,0,0.02),inset_-2px_-2px_4px_rgba(255,255,255,0.6)]">
 <div>
 <h3 class="font-label-sm text-label-sm font-bold text-error">Delete Brand Permanently</h3>
-<p class="font-body-md text-body-md text-sm text-on-surface-variant mt-1">Permanently remove this brand, all its configuration, and historical lead data. This cannot be undone.</p>
+<p class="font-body-md text-body-md text-sm text-on-surface-variant mt-1">Permanently remove this brand, all vector embeddings, and historical lead data.</p>
 </div>
 <div class="flex flex-col gap-3">
-<label class="font-label-sm text-label-sm text-on-surface">Type <strong class="text-error select-all bg-error-container/30 px-1 rounded">Acme Corp</strong> to confirm</label>
+<label class="font-label-sm text-label-sm text-on-surface">Type <strong class="text-error select-all bg-error-container/30 px-1 rounded">{{ bot_id }}</strong> to confirm</label>
 <div class="flex flex-col sm:flex-row gap-4">
-<input class="flex-1 bg-surface rounded-full px-6 py-3 font-body-md text-body-md text-on-surface border-none shadow-[inset_4px_4px_8px_rgba(0,0,0,0.08),inset_-4px_-4px_8px_rgba(255,255,255,0.9)] focus:ring-2 focus:ring-error outline-none transition-shadow placeholder:text-outline-variant" id="deleteConfirmInput" placeholder="Acme Corp" type="text"/>
+<input class="flex-1 bg-surface rounded-full px-6 py-3 font-body-md text-body-md text-on-surface border-none shadow-[inset_4px_4px_8px_rgba(0,0,0,0.08),inset_-4px_-4px_8px_rgba(255,255,255,0.9)] focus:ring-2 focus:ring-error outline-none transition-shadow placeholder:text-outline-variant" id="deleteConfirmInput" placeholder="{{ bot_id }}" type="text"/>
 <button class="shrink-0 px-6 py-3 rounded-full bg-surface-variant text-outline font-label-sm text-label-sm shadow-[inset_2px_2px_4px_rgba(0,0,0,0.1)] cursor-not-allowed transition-all" disabled="" id="deleteBtn">Delete this brand</button>
 </div>
 </div>
@@ -133,10 +226,6 @@
 </div>
 </div>
 </section>
-<!-- Placeholders for other tabs -->
-<section class="tab-content hidden" id="tab-config"><div class="p-xl text-center text-on-surface-variant clay-inset rounded-xl bg-surface">Configuration settings coming soon...</div></section>
-<section class="tab-content hidden" id="tab-leads"><div class="p-xl text-center text-on-surface-variant clay-inset rounded-xl bg-surface">Lead management coming soon...</div></section>
-<section class="tab-content hidden" id="tab-billing"><div class="p-xl text-center text-on-surface-variant clay-inset rounded-xl bg-surface">Billing history coming soon...</div></section>
 </main>
 {% endblock %}
 
@@ -148,38 +237,86 @@
 
     tabs.forEach(tab => {
         tab.addEventListener('click', () => {
-            // Reset all tabs
             tabs.forEach(t => {
                 t.className = 'tab-btn px-6 py-3 rounded-full bg-surface text-on-surface-variant font-label-sm text-label-sm clay-outer hover:scale-[1.02] active:scale-95 transition-all';
                 if(t.dataset.target === 'tab-danger') {
-                        t.classList.add('text-error');
+                    t.classList.add('text-error');
                 }
             });
-            // Reset all contents
             contents.forEach(c => c.classList.add('hidden'));
 
-            // Set active tab
             tab.className = 'tab-btn px-6 py-3 rounded-full bg-primary-container text-on-primary-container font-label-sm text-label-sm clay-inset transition-all';
-            
-            // Show active content
             const targetId = tab.getAttribute('data-target');
             document.getElementById(targetId).classList.remove('hidden');
         });
     });
 
+    // Copy Embed Snippet
+    const copyBtn = document.getElementById('copySnippetBtn');
+    if (copyBtn) {
+        copyBtn.addEventListener('click', () => {
+            const text = document.getElementById('snippetCode').innerText;
+            navigator.clipboard.writeText(text).then(() => {
+                copyBtn.innerHTML = '<span class="material-symbols-outlined text-[18px]">check</span> Copied!';
+                setTimeout(() => {
+                    copyBtn.innerHTML = '<span class="material-symbols-outlined text-[18px]">content_copy</span> Copy Snippet';
+                }, 2000);
+            });
+        });
+    }
+
+    // Toggle Suspend / Active Status
+    const toggleStatusBtn = document.getElementById('toggleStatusBtn');
+    if (toggleStatusBtn) {
+        toggleStatusBtn.addEventListener('click', async () => {
+            const currentStatus = toggleStatusBtn.getAttribute('data-status');
+            const newStatus = currentStatus === 'suspended' ? 'active' : 'suspended';
+            try {
+                const res = await fetch('/api/admin/brands/{{ bot_id }}/status', {
+                    method: 'PATCH',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ status: newStatus })
+                });
+                if (res.ok) {
+                    window.location.reload();
+                } else {
+                    const data = await res.json();
+                    alert(data.error || 'Failed to update brand status');
+                }
+            } catch (e) {
+                alert('Network error: ' + e.message);
+            }
+        });
+    }
+
     // Delete Confirmation Logic
     const deleteInput = document.getElementById('deleteConfirmInput');
     const deleteBtn = document.getElementById('deleteBtn');
-    const targetName = "Acme Corp";
+    const targetSlug = "{{ bot_id }}";
 
-    if (deleteInput) {
+    if (deleteInput && deleteBtn) {
         deleteInput.addEventListener('input', (e) => {
-            if(e.target.value === targetName) {
+            if(e.target.value.trim() === targetSlug) {
                 deleteBtn.disabled = false;
                 deleteBtn.className = 'shrink-0 px-6 py-3 rounded-full bg-error text-on-error font-label-sm text-label-sm clay-outer hover:scale-[1.02] active:scale-95 transition-all cursor-pointer';
             } else {
                 deleteBtn.disabled = true;
                 deleteBtn.className = 'shrink-0 px-6 py-3 rounded-full bg-surface-variant text-outline font-label-sm text-label-sm shadow-[inset_2px_2px_4px_rgba(0,0,0,0.1)] cursor-not-allowed transition-all';
+            }
+        });
+
+        deleteBtn.addEventListener('click', async () => {
+            if (!confirm(`Are you sure you want to permanently delete '${targetSlug}'?`)) return;
+            try {
+                const res = await fetch(`/api/admin/brands/${targetSlug}`, { method: 'DELETE' });
+                if (res.ok) {
+                    window.location.href = '/admin/dashboard';
+                } else {
+                    const data = await res.json();
+                    alert(data.error || 'Failed to delete brand');
+                }
+            } catch (e) {
+                alert('Network error: ' + e.message);
             }
         });
     }

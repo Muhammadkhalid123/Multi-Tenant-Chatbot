@@ -8,14 +8,14 @@
 
     if (scriptElement) {
         // Read data- attributes
-        if (scriptElement.dataset.botId) {
-            botId = scriptElement.dataset.botId;
+        if (scriptElement.dataset.botId || scriptElement.dataset.brandId) {
+            botId = scriptElement.dataset.botId || scriptElement.dataset.brandId;
         }
         if (scriptElement.dataset.apiBase) {
             apiBase = scriptElement.dataset.apiBase;
         }
-        if (scriptElement.dataset.widgetApiKey) {
-            widgetApiKey = scriptElement.dataset.widgetApiKey;
+        if (scriptElement.dataset.widgetApiKey || scriptElement.dataset.apiKey) {
+            widgetApiKey = scriptElement.dataset.widgetApiKey || scriptElement.dataset.apiKey;
         }
         
         // Read query parameters from script src
@@ -25,8 +25,10 @@
                 hostUrl = url.origin;
                 const urlParams = new URLSearchParams(url.search);
                 if (urlParams.has('bot_id')) botId = urlParams.get('bot_id');
+                if (urlParams.has('brand_id')) botId = urlParams.get('brand_id');
                 if (urlParams.has('api_base')) apiBase = urlParams.get('api_base');
                 if (urlParams.has('widget_api_key')) widgetApiKey = urlParams.get('widget_api_key');
+                if (urlParams.has('api_key')) widgetApiKey = urlParams.get('api_key');
             } catch (e) {
                 console.warn("[SPC Widget] Failed to parse script origin, defaulting to local origin.");
             }

@@ -55,7 +55,26 @@ def seed_configs():
                 tenant_doc,
                 upsert=True
             )
-            print(f"[OK] Configuration for '{bot_id}' successfully upserted into db.bot_configs.")
+            
+            # Upsert into tenants collection as well
+            db.tenants.update_one(
+                {"bot_id": bot_id},
+                {"$set": {
+                    "brand_name": tenant_doc["brand_name"],
+                    "welcome_message": tenant_doc["welcome_message"],
+                    "primary_color": tenant_doc["primary_color"],
+                    "primary_light_color": tenant_doc["primary_light_color"],
+                    "webhook_url": tenant_doc["webhook_url"],
+                    "system_prompt": tenant_doc["system_prompt"],
+                    "status": "active"
+                },
+                "$setOnInsert": {
+                    "widget_api_key": f"sk_{bot_id}_live",
+                    "created_at": "2026-08-22"
+                }},
+                upsert=True
+            )
+            print(f"[OK] Configuration for '{bot_id}' successfully upserted into db.bot_configs and db.tenants.")
         except Exception as e:
             print(f"[ERROR] Failed to seed {filename}: {e}")
 
