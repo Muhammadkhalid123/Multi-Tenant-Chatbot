@@ -258,10 +258,14 @@ llm_provider = os.getenv("LLM_PROVIDER", "groq").lower()
 
 if llm_provider == "groq":
     print("[INFO] Initializing ChatOpenAI client for Groq...")
+    groq_model = os.getenv("GROQ_MODEL", "openai/gpt-oss-120b").strip()
+    if groq_model == "llama-3.3-70b-versatile" or not groq_model:
+        groq_model = "openai/gpt-oss-120b"
+        
     llm = ChatOpenAI(
         openai_api_base=os.getenv("GROQ_API_BASE", "https://api.groq.com/openai/v1"),
         openai_api_key=os.getenv("GROQ_API_KEY"),
-        model_name=os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile"),
+        model_name=groq_model,
         temperature=0.7,
         model_kwargs={"response_format": {"type": "json_object"}}
     )
