@@ -8,7 +8,7 @@ from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_ollama import OllamaLLM
 from langchain_openai import ChatOpenAI
 from langchain_core.prompts import PromptTemplate
-from prompt_templates import build_system_prompt, extract_interests_from_message, TEMPLATES
+from prompt_templates import build_system_prompt, extract_interests_from_message, TEMPLATES, RESPONSE_CONTRACT
 import re
 import json
 import os
@@ -449,7 +449,12 @@ def safe_format_prompt(template_str, context, history, question, name_context=""
     Safely formats a system prompt template without crashing on unescaped JSON braces.
     """
     if not template_str:
-        template_str = "You are a helpful assistant.\n\nContext: {context}\n\nPrevious conversation: {history}\n\nQuestion: {question}\n\nJSON Response:"
+        template_str = f"You are a helpful assistant.\n\n{RESPONSE_CONTRACT}\nContext: {{context}}\nPrevious conversation: {{history}}\nQuestion: {{question}}\nJSON Response:"
+    
+    if "{question}" not in template_str and "{context}" not in template_str:
+        template_str = template_str.strip() + f"\n\n{RESPONSE_CONTRACT}\nContext: {{context}}\nPrevious conversation: {{history}}\nQuestion: {{question}}\nJSON Response:"
+    elif "json" not in template_str.lower():
+        template_str = template_str.strip() + f"\n\n{RESPONSE_CONTRACT}\nJSON Response:"
     
     full_context = (name_context + context).strip()
     

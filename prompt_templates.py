@@ -9,8 +9,14 @@ Respond ONLY in valid JSON with these exact keys:
   "lead_required": true or false,
   "extracted_name": "user's first name if they just gave it, else null"
 }}
-Set lead_required=true when the user expresses clear interest, asks for
-pricing/a quote, or is ready to move forward with a service.
+
+CRITICAL RULES FOR lead_required:
+- By default, ALWAYS set "lead_required": false during conversational exchanges, answering questions, exploring the user's project, or explaining services/marketing plans.
+- Set "lead_required": true ONLY in these specific situations:
+  1. The user explicitly asks to schedule a call, get a quote, talk on phone/zoom, or connect with a consultant/team member (e.g., "call me", "book a call", "can I talk to someone", "how much does it cost?").
+  2. The assistant previously offered a call or consultation (e.g., "Would you like to schedule a call?"), AND the user replied affirmatively (e.g., "yes", "sure", "please do", "sounds good", "okay", "let's do it", "yeah").
+  3. The user explicitly states they are ready to hire, sign up, or purchase a package.
+- NEVER set "lead_required": true on initial questions, exploratory inquiries, or when the user simply asks for advice, a plan, or information about a service.
 No text outside the JSON object.
 """
 
@@ -31,6 +37,11 @@ Services you can discuss:
 Tone: warm, encouraging, editorially credible. Authors are often
 emotionally invested in their manuscript — validate that before pitching
 services. Keep replies concise (2-4 sentences) unless asked for detail.
+
+Conversation Guidelines:
+- When a user asks for a marketing plan or book service, do NOT immediately trigger the contact form. Instead, warmly explain your approach and ask a relevant question about their book (e.g. genre, current stage, target audience).
+- Maintain an interactive conversation. When appropriate, politely ask: "Would you like to schedule a free consultation call with our publishing team to discuss this further?"
+- Only trigger the lead contact form (lead_required: true) when the user agrees ("yes", "sure") or explicitly requests a call/quote.
 
 {brand_facts}
 
@@ -57,6 +68,11 @@ Tone: confident, results-oriented, consultative. Lead with outcomes
 (traffic, leads, conversions) rather than deliverables. Keep replies
 concise (2-4 sentences) unless asked for detail.
 
+Conversation Guidelines:
+- When a user asks for a marketing plan or digital service, do NOT immediately trigger the contact form. Instead, outline key pillars (e.g. SEO, social ads, funnels) and ask about their business goals, audience, or timeline.
+- Maintain an interactive conversation. When appropriate, offer: "Would you like to schedule a strategy call with our team to map this out in detail?"
+- Only trigger the lead contact form (lead_required: true) when the user agrees ("yes", "sure") or explicitly requests a call/quote.
+
 {brand_facts}
 
 """ + RESPONSE_CONTRACT + """
@@ -77,6 +93,10 @@ Digital & growth: web development, SEO, branding, digital marketing
 Tone: professional and adaptive — lean editorial when discussing writing
 work, lean results-oriented when discussing digital/growth work. Keep
 replies concise (2-4 sentences) unless asked for detail.
+
+Conversation Guidelines:
+- Engage the user conversationally, answer their questions, and ask about their project needs.
+- Only trigger the lead contact form (lead_required: true) when the user agrees to a call or explicitly requests pricing/a quote.
 
 {brand_facts}
 
@@ -127,10 +147,6 @@ def build_system_prompt(config: dict) -> str:
     """
     Composes system prompt from type template, or returns explicit override.
     """
-    # Escape hatch: explicit override wins
-    if config.get("system_prompt"):
-        return config["system_prompt"]
-
     brand_type = config.get("brand_type", "ebook")
     if brand_type not in TEMPLATES:
         brand_type = "ebook"
@@ -141,6 +157,18 @@ def build_system_prompt(config: dict) -> str:
         brand_facts = f"Brand specific differentiators:\n{brand_facts}"
     else:
         brand_facts = ""
+
+    # Escape hatch: explicit override
+    custom_prompt = config.get("system_prompt")
+    if custom_prompt and custom_prompt.strip():
+        base = custom_prompt.strip()
+        # If user supplied a simple prompt without placeholders or JSON schema, wrap it safely
+        if "json" not in base.lower() or "{question}" not in base:
+            if "{question}" not in base and "{context}" not in base:
+                base = base + "\n\n" + RESPONSE_CONTRACT + "\nContext: {context}\nPrevious conversation: {history}\nQuestion: {question}\nJSON Response:\n"
+            elif "json" not in base.lower():
+                base = base + "\n\n" + RESPONSE_CONTRACT + "\nJSON Response:\n"
+        return base
 
     return template.format(
         brand_name=config.get("brand_name", "our team"),
